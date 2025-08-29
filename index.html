@@ -1,0 +1,2018 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hugo Amadey Admin App v0.9.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#121212"/>
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/leandroidecba/HugoAmadeyApp/main/logo-192.png">
+    
+    <!-- Librerías para Reportes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal-container { visibility: hidden; opacity: 0; transition: visibility 0s 300ms, opacity 300ms ease-in-out; }
+        .modal-container.is-open { visibility: visible; opacity: 1; transition: visibility 0s, opacity 300ms ease-in-out; }
+        .modal-content { transform: translateY(100%); transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1); }
+        .modal-container.is-open .modal-content { transform: translateY(0); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1E1E1E; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #4A5568; border-radius: 3px;}
+        #toast {
+            visibility: hidden;
+            opacity: 0;
+            transform: translateY(100%);
+            transition: all 0.3s ease-in-out;
+        }
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .day-with-record { position: relative; }
+        .day-with-record::after {
+            content: '';
+            position: absolute;
+            bottom: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #4ade80;
+        }
+        .selected-day {
+            background-color: #3b82f6 !important;
+            color: white !important;
+        }
+        .bottom-nav-active svg, .bottom-nav-active span {
+            color: #ffffff;
+        }
+        .bottom-nav-inactive svg, .bottom-nav-inactive span {
+            color: #9CA3AF; /* gray-400 */
+        }
+        .table-container {
+            max-height: 40vh;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body class="bg-[#121212] text-white antialiased">
+
+    <!-- Pantalla de Login -->
+    <div id="login-screen" class="max-w-md mx-auto min-h-screen flex flex-col items-center justify-center p-6 space-y-6">
+        <img src="https://raw.githubusercontent.com/leandroidecba/HugoAmadeyApp/refs/heads/main/Hugo%20Amadey%20Logo_Transparente-V03.png" alt="Logo de la Empresa" class="w-48 h-auto">
+        <div id="role-selection" class="w-full text-center">
+            <p class="text-gray-400 text-center mb-4">Selecciona tu rol para continuar</p>
+            <div class="w-full space-y-4">
+                <button id="select-admin-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl text-lg">Admin</button>
+                <button id="select-cajero-btn" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 rounded-xl text-lg">Cajero</button>
+            </div>
+        </div>
+        <div id="password-section" class="w-full hidden">
+             <p id="password-prompt" class="text-center mb-4"></p>
+             <input type="password" id="password-input" class="w-full bg-gray-800 rounded-lg px-3 py-3 text-center text-lg" placeholder="••••••••">
+             <p id="login-error" class="text-red-500 text-sm text-center mt-2 h-4"></p>
+             <button id="login-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-lg mt-4">Ingresar</button>
+             <button id="back-to-role-selection" class="w-full mt-2 text-gray-400 text-sm">Volver</button>
+        </div>
+         <button id="install-app-btn" class="hidden w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-lg mt-4 flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            Instalar App
+        </button>
+    </div>
+
+    <!-- Contenedor Principal de la App -->
+    <div id="main-app" class="hidden">
+        <div id="app-container" class="max-w-md mx-auto min-h-screen flex flex-col">
+            
+            <!-- Contenido Principal -->
+            <main class="flex-grow overflow-y-auto custom-scrollbar pb-24">
+                <!-- SECCIÓN 1: DASHBOARD DEL DÍA -->
+                <div id="dashboard-content" class="p-6 space-y-6">
+                    <section id="start-day-card" class="bg-[#1E1E1E] p-4 rounded-xl flex items-center justify-between">
+                        <div><h2 class="font-semibold">Caja del Día</h2><p id="caja-status-text" class="text-sm text-gray-400">Aún no has iniciado la caja hoy.</p></div>
+                        <button id="iniciar-caja-btn" class="bg-white text-black text-sm font-bold py-2 px-4 rounded-lg">Iniciar Caja</button>
+                    </section>
+                    <section id="withdraw-card" class="bg-[#1E1E1E] p-4 rounded-xl flex items-center justify-between">
+                        <div><h2 class="font-semibold">Retiros de Caja</h2><p id="retiros-status-text" class="text-sm text-gray-400">Total retirado hoy: $0</p></div>
+                        <button id="retirar-dinero-btn" class="bg-yellow-500 text-black text-sm font-bold py-2 px-4 rounded-lg">Retirar</button>
+                    </section>
+                    <section class="grid grid-cols-2 gap-4">
+                        <div id="dashboard-total-facturado-card" class="bg-[#1E1E1E] p-4 rounded-xl col-span-2"><h2 class="text-sm font-medium text-gray-400">TOTAL FACTURADO (SIN RECARGOS)</h2><p id="dashboard-total-ingresos" class="text-3xl font-semibold mt-2">$0</p></div>
+                        <div class="bg-[#1E1E1E] p-4 rounded-xl"><h2 class="text-sm font-medium text-gray-400">EN EFECTIVO</h2><p id="dashboard-ingresos-efectivo" class="text-2xl font-semibold mt-2">$0</p></div>
+                        <div class="bg-[#1E1E1E] p-4 rounded-xl"><h2 class="text-sm font-medium text-gray-400">EN DIGITAL</h2><p id="dashboard-ingresos-digital" class="text-2xl font-semibold mt-2">$0</p></div>
+                        <div class="bg-[#1E1E1E] p-4 rounded-xl col-span-2"><h2 class="text-sm font-medium text-gray-400">GASTOS OPERATIVOS</h2><p id="dashboard-gastos-operativos" class="text-2xl font-semibold mt-2 text-red-400">$0</p></div>
+                        <div class="bg-blue-900/50 border border-blue-700 p-4 rounded-xl col-span-2"><h2 class="text-sm font-medium text-blue-300">BALANCE DEL DÍA EN EFECTIVO</h2><p id="dashboard-balance" class="text-3xl font-bold mt-2">$0</p></div>
+                    </section>
+                </div>
+
+                <!-- SECCIÓN 2: VISOR DE REPORTES -->
+                <div id="reportes-content" class="p-6 space-y-6 hidden">
+                    <div class="space-y-4">
+                        <div id="report-type-selector" class="grid grid-cols-3 gap-2 bg-gray-900 p-1 rounded-lg">
+                            <button id="report-movimientos-btn" class="w-full py-2 px-4 rounded-md text-sm font-semibold bg-gray-700 text-white">Movimientos</button>
+                            <button id="report-comisiones-btn" class="w-full py-2 px-4 rounded-md text-sm font-semibold text-gray-400 hover:bg-gray-800">Comisiones</button>
+                            <button id="report-finanzas-btn" class="w-full py-2 px-4 rounded-md text-sm font-semibold text-gray-400 hover:bg-gray-800">Finanzas</button>
+                        </div>
+                    </div>
+
+                    <!-- Vista de Movimientos -->
+                    <div id="movimientos-view">
+                        <button id="date-selector-btn" class="w-full bg-gray-800 p-3 rounded-lg text-lg font-semibold text-center hover:bg-gray-700 transition-colors">
+                            Seleccionar fecha
+                        </button>
+                        <div id="details-container" class="space-y-6 mt-6">
+                            <section>
+                                <h3 class="text-lg font-semibold text-gray-300">Ingresos por Comanda</h3>
+                                <div id="comanda-details-list" class="space-y-3 mt-2"></div>
+                            </section>
+                            <section>
+                                <h3 class="text-lg font-semibold text-gray-300">Gastos Operativos</h3>
+                                <div id="gastos-operativos-list" class="space-y-3 mt-2"></div>
+                            </section>
+                            <section id="admin-gastos-section">
+                                <h3 class="text-lg font-semibold text-gray-300">Gastos Administrativos</h3>
+                                <div id="gastos-administrativos-list" class="space-y-3 mt-2"></div>
+                            </section>
+                        </div>
+                        <div id="summary-container" class="bg-gray-800 p-4 rounded-lg space-y-3 mt-6">
+                             <h2 class="text-xl font-bold mb-2">Resumen del Día</h2>
+                             <div class="flex justify-between text-green-400"><span class="font-medium">Total Ingresos (sin recargos):</span><span id="summary-ingresos" class="font-semibold">$0</span></div>
+                             <div class="flex justify-between text-yellow-400"><span class="font-medium">Total Ingresos por Recargos:</span><span id="summary-recargos" class="font-semibold">$0</span></div>
+                             <div class="flex justify-between text-red-400"><span class="font-medium">Gastos Operativos:</span><span id="summary-gastos-op" class="font-semibold">-$0</span></div>
+                             <div id="summary-admin-gastos-row" class="flex justify-between text-red-400"><span class="font-medium">Gastos Administrativos:</span><span id="summary-gastos-admin" class="font-semibold">-$0</span></div>
+                             <hr class="border-gray-600">
+                             <div class="flex justify-between text-xl"><span class="font-bold">BALANCE OPERATIVO:</span><span id="summary-balance" class="font-bold">$0</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Vista de Comisiones -->
+                    <div id="comisiones-view" class="hidden space-y-6">
+                        <div class="bg-gray-800 p-4 rounded-lg space-y-4">
+                            <div class="flex items-center gap-2">
+                                <input type="date" id="comision-fecha-inicio" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
+                                <span class="text-gray-400">-</span>
+                                <input type="date" id="comision-fecha-fin" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                            <select id="comision-profesional-select" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm"><option>Seleccionar Profesional</option></select>
+                            <button id="generar-reporte-comision-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
+                        </div>
+                        <div id="comision-reporte-container" class="hidden">
+                            <div class="table-container custom-scrollbar">
+                                <table id="comision-report-table" class="w-full text-sm text-left whitespace-nowrap">
+                                    <thead class="bg-gray-700 sticky top-0">
+                                        <tr>
+                                            <th class="p-2">Nº Com.</th>
+                                            <th class="p-2">Fecha</th>
+                                            <th class="p-2">Servicio/Producto</th>
+                                            <th class="p-2">Voucher</th>
+                                            <th class="p-2">%</th>
+                                            <th class="p-2 text-right">Facturado</th>
+                                            <th class="p-2 text-right">Comisión</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="comision-table-body" class="bg-gray-800">
+                                    </tbody>
+                                    <tfoot class="bg-gray-900 sticky bottom-0">
+                                        <tr>
+                                            <td colspan="5" class="p-2 font-bold">TOTALES</td>
+                                            <td id="comision-total-facturado" class="p-2 text-right font-bold">$0</td>
+                                            <td id="comision-total-comision" class="p-2 text-right font-bold text-green-400">$0</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <button id="exportar-pdf-comision-btn" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                        </div>
+                    </div>
+
+                    <!-- INICIO: Vista de Finanzas -->
+                    <div id="finanzas-view" class="hidden space-y-6">
+                        <div class="bg-gray-800 p-4 rounded-lg space-y-4">
+                            <div class="flex items-center gap-2">
+                                <input type="date" id="finanzas-fecha-inicio" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
+                                <span class="text-gray-400">-</span>
+                                <input type="date" id="finanzas-fecha-fin" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
+                            </div>
+                            <select id="finanzas-reporte-select" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
+                                <option value="detalleComandas">Detalle comandas</option>
+                                <option value="ventas" disabled>Ventas (próximamente)</option>
+                                <option value="gastos" disabled>Gastos (próximamente)</option>
+                                <option value="pagos" disabled>Pagos (próximamente)</option>
+                                <option value="resumenFinanciero" disabled>Resumen Financiero (próximamente)</option>
+                            </select>
+                            <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
+                        </div>
+                        <div id="finanzas-reporte-container" class="hidden">
+                            <div class="table-container custom-scrollbar">
+                                <table id="finanzas-report-table" class="w-full text-sm text-left whitespace-nowrap">
+                                    <thead id="finanzas-table-head" class="bg-gray-700 sticky top-0">
+                                        <!-- Header se genera dinámicamente -->
+                                    </thead>
+                                    <tbody id="finanzas-table-body" class="bg-gray-800">
+                                        <!-- Body se genera dinámicamente -->
+                                    </tbody>
+                                    <tfoot id="finanzas-table-foot" class="bg-gray-900 sticky bottom-0">
+                                        <!-- Footer se genera dinámicamente -->
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="mt-4 grid grid-cols-2 gap-4">
+                               <button id="exportar-pdf-finanzas-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                               <button id="exportar-xlsx-finanzas-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg">Exportar XLSX</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- FIN: Vista de Finanzas -->
+
+                </div>
+
+                <!-- SECCIÓN 3: AJUSTES -->
+                <div id="ajustes-content" class="p-6 space-y-8 hidden">
+                    <div class="bg-gray-900 p-1 rounded-lg">
+                        <button class="w-full py-2 px-4 rounded-md text-sm font-semibold bg-gray-700 text-white">Presets</button>
+                    </div>
+                    <div id="ajustes-lists-container">
+                        <section>
+                            <div class="flex justify-between items-center mb-3">
+                                <h2 class="text-lg font-semibold text-gray-300">Servicios</h2>
+                                <button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="servicios">+ Añadir</button>
+                            </div>
+                            <div id="ajustes-servicios-list" class="space-y-2"></div>
+                        </section>
+                        <section>
+                            <div class="flex justify-between items-center mb-3">
+                                <h2 class="text-lg font-semibold text-gray-300">Profesionales</h2>
+                                <button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="profesionales">+ Añadir</button>
+                            </div>
+                            <div id="ajustes-profesionales-list" class="space-y-2"></div>
+                        </section>
+                        <section>
+                            <div class="flex justify-between items-center mb-3">
+                                <h2 class="text-lg font-semibold text-gray-300">Medios de Pago (Comandas)</h2>
+                                <button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="mediosDePago">+ Añadir</button>
+                            </div>
+                            <div id="ajustes-medios-pago-list" class="space-y-2"></div>
+                        </section>
+                        <section>
+                            <div class="flex justify-between items-center mb-3">
+                                <h2 class="text-lg font-semibold text-gray-300">Categorías de Gasto</h2>
+                                <button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="categoriasGasto">+ Añadir</button>
+                            </div>
+                            <div id="ajustes-categorias-gasto-list" class="space-y-2"></div>
+                        </section>
+                        <section>
+                            <div class="flex justify-between items-center mb-3">
+                                <h2 class="text-lg font-semibold text-gray-300">Medios de Pago (Admin)</h2>
+                                <button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="mediosDePagoAdmin">+ Añadir</button>
+                            </div>
+                            <div id="ajustes-medios-pago-admin-list" class="space-y-2"></div>
+                        </section>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Barra de Navegación Inferior -->
+        <footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-[#1E1E1E] border-t border-gray-700 grid grid-cols-5 items-center">
+            <button id="tab-dashboard-btn-bottom" class="bottom-nav-active flex flex-col items-center justify-center py-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                <span class="text-xs mt-1">Dashboard</span>
+            </button>
+            <button id="tab-reportes-btn-bottom" class="bottom-nav-inactive flex flex-col items-center justify-center py-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                <span class="text-xs mt-1">Reportes</span>
+            </button>
+            <div class="flex justify-center">
+                <button id="fab" class="bg-white text-black rounded-full p-4 shadow-lg transform -translate-y-4 flex items-center justify-center">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" /></svg>
+                </button>
+            </div>
+            <button id="tab-ajustes-btn-bottom" class="bottom-nav-inactive flex flex-col items-center justify-center py-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="text-xs mt-1">Ajustes</span>
+            </button>
+            <button id="tab-salir-btn-bottom" class="bottom-nav-inactive flex flex-col items-center justify-center py-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                <span class="text-xs mt-1">Salir</span>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-28 left-1/2 -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-semibold z-[60]">
+        Mensaje
+    </div>
+
+    <!-- MODALES (compartidos por todas las secciones) -->
+    <div id="fab-action-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content w-full max-w-md mx-auto">
+            <div class="p-4 space-y-3">
+                <button id="action-new-comanda" class="w-full bg-gray-200 text-black font-bold py-4 rounded-xl text-lg">Nueva Comanda</button>
+                <button id="action-new-gasto" class="w-full bg-gray-200 text-black font-bold py-4 rounded-xl text-lg">Nuevo Gasto</button>
+            </div>
+            <button id="close-fab-modal-btn" class="w-full bg-red-500 text-white font-bold py-4 rounded-xl mt-2 text-lg">Cancelar</button>
+        </div>
+    </div>
+    <div id="gasto-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Nuevo Gasto</h2>
+                <button id="close-gasto-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <form id="gasto-form" class="p-4 space-y-4">
+                <input type="text" id="gasto-concepto" placeholder="Concepto del gasto" class="w-full bg-gray-800 rounded-lg px-3 py-2" required>
+                <div>
+                    <label class="text-sm font-medium text-gray-400">Categoría</label>
+                    <select id="gasto-categoria" class="w-full bg-gray-700 rounded-lg px-3 py-2 mt-1" required><option>Cargando...</option></select>
+                </div>
+                 <div>
+                    <label class="text-sm font-medium text-gray-400">Medio de Pago (Administración)</label>
+                    <select id="gasto-medio-pago" class="w-full bg-gray-700 rounded-lg px-3 py-2 mt-1" required><option>Cargando...</option></select>
+                </div>
+                <div id="gasto-de-caja-container" class="hidden flex items-center space-x-2 pt-2">
+                    <input type="checkbox" id="gasto-de-caja-checkbox" class="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500">
+                    <label for="gasto-de-caja-checkbox" class="text-sm font-medium text-gray-300">Computar en el balance de caja (De Caja)</label>
+                </div>
+                <input type="number" id="gasto-monto" placeholder="Monto" class="w-full bg-gray-800 rounded-lg px-3 py-2" required>
+            </form>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212]">
+                <button id="save-gasto-btn" class="w-full bg-white text-black font-bold py-3 rounded-lg">Guardar Gasto</button>
+            </footer>
+        </div>
+    </div>
+    <div id="comanda-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full h-[95vh] max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center"><h2 id="comanda-modal-title" class="text-xl font-bold">Nueva Comanda</h2><button id="close-comanda-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button></header>
+            <div class="flex-grow p-4 overflow-y-auto custom-scrollbar space-y-6">
+                <input type="hidden" id="comanda-id">
+                <input type="hidden" id="comanda-original-fecha">
+                <input type="hidden" id="comanda-original-hora">
+                <section class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-sm font-medium text-gray-300">Nº Comanda</label><input type="number" id="comanda-numero" placeholder="1025" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                        <div><label class="text-sm font-medium text-gray-300">Cliente</label><input type="text" id="comanda-cliente" placeholder="Nombre del cliente" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                    </div>
+                </section>
+                <hr class="border-gray-700">
+                <section>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-semibold">Conceptos</h3>
+                        <div class="flex gap-2">
+                           <button id="add-service-btn" class="text-xs bg-blue-600 px-3 py-1 rounded-md">+ Servicio</button>
+                           <button id="add-product-btn" class="text-xs bg-green-600 px-3 py-1 rounded-md">+ Producto</button>
+                           <button id="add-other-btn" class="text-xs bg-gray-600 px-3 py-1 rounded-md">+ Otro</button>
+                        </div>
+                    </div>
+                    <div id="items-list" class="space-y-3"></div>
+                </section>
+                <hr class="border-gray-700">
+                <section>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-semibold">Checkout</h3>
+                        <div class="flex gap-2">
+                           <button id="add-discount-btn" class="text-sm bg-gray-600 px-3 py-1 rounded-md">+ Descuento</button>
+                           <button id="add-payment-btn" class="text-sm bg-orange-600 px-3 py-1 rounded-md">+ Añadir Pago</button>
+                        </div>
+                    </div>
+                    <div id="discount-container" class="hidden space-y-2 mb-3">
+                    </div>
+                    <div id="payments-list" class="space-y-3"></div>
+                </section>
+            </div>
+            <footer class="flex-shrink-0 p-4 border-t border-gray-700 bg-[#121212] space-y-2">
+                <div id="summary-list" class="space-y-1"></div>
+                <div id="payment-summary-list" class="space-y-1 mt-2"></div>
+                <hr class="border-gray-600 my-2">
+                <div class="flex justify-between text-xl"><span class="font-medium text-gray-300">Resta Pagar:</span><span id="comanda-remaining" class="font-bold text-yellow-400">$0,00</span></div>
+                <div class="grid grid-cols-2 gap-4 mt-3">
+                    <button id="delete-comanda-from-edit-btn" class="w-full bg-red-600/20 text-red-400 font-bold py-3 rounded-lg hidden">Eliminar</button>
+                    <button id="save-comanda-btn" class="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-gray-200 transition-colors col-span-2">Guardar</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+    <div id="caja-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Iniciar Caja</h2>
+                <button id="close-caja-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <div class="p-4 space-y-4">
+                <label for="caja-inicial-input" class="text-sm font-medium text-gray-300">Monto de Apertura en Efectivo</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">$</span>
+                    <input type="number" id="caja-inicial-input" placeholder="0" class="w-full bg-gray-800 rounded-lg pl-7 pr-3 py-2">
+                </div>
+            </div>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212]">
+                <button id="save-caja-btn" class="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-gray-200 transition-colors">Guardar e Iniciar</button>
+            </footer>
+        </div>
+    </div>
+    <div id="calendar-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-start justify-center z-50 p-4 pt-16">
+        <div class="modal-content bg-gray-800 p-4 rounded-lg w-full max-w-sm" style="transform: translateY(0);">
+             <div id="calendar-header" class="flex justify-between items-center mb-4">
+                <button id="prev-month-btn" class="p-2 rounded-full hover:bg-gray-700">&lt;</button>
+                <h2 id="month-year-label" class="font-bold text-lg"></h2>
+                <button id="next-month-btn" class="p-2 rounded-full hover:bg-gray-700">&gt;</button>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center"></div>
+        </div>
+    </div>
+    <div id="comanda-detail-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full h-[90vh] max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <input type="hidden" id="detail-comanda-id">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 id="detail-modal-title" class="text-xl font-bold">Detalle de Comanda</h2>
+                <button id="close-detail-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <div id="detail-modal-body" class="flex-grow p-4 overflow-y-auto space-y-4 custom-scrollbar"></div>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212] grid grid-cols-2 gap-4">
+                <button id="delete-comanda-btn" class="w-full bg-red-600/20 text-red-400 font-bold py-3 rounded-lg">Eliminar</button>
+                <button id="edit-comanda-btn" class="w-full bg-blue-600/20 text-blue-400 font-bold py-3 rounded-lg">Editar</button>
+            </footer>
+        </div>
+    </div>
+    <div id="gasto-detail-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <input type="hidden" id="detail-gasto-id">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 id="gasto-detail-modal-title" class="text-xl font-bold">Detalle de Gasto</h2>
+                <button id="close-gasto-detail-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <div id="gasto-detail-modal-body" class="flex-grow p-4 overflow-y-auto space-y-4"></div>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212] grid grid-cols-2 gap-4">
+                <button id="delete-gasto-btn" class="w-full bg-red-600/20 text-red-400 font-bold py-3 rounded-lg">Eliminar</button>
+                <button id="edit-gasto-btn" class="w-full bg-blue-600/20 text-blue-400 font-bold py-3 rounded-lg">Editar</button>
+            </footer>
+        </div>
+    </div>
+    <!-- Modal para Editar Presets -->
+    <div id="preset-edit-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 id="preset-modal-title" class="text-xl font-bold">Editar Elemento</h2>
+                <button id="close-preset-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <div id="preset-modal-body" class="p-4 space-y-4">
+                <!-- Contenido dinámico -->
+            </div>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212] grid grid-cols-2 gap-4">
+                <button id="delete-preset-btn" class="w-full bg-red-600/20 text-red-400 font-bold py-3 rounded-lg">Eliminar</button>
+                <button id="save-preset-btn" class="w-full bg-white text-black font-bold py-3 rounded-lg">Guardar Cambios</button>
+            </footer>
+        </div>
+    </div>
+    <!-- Modal para Retiros -->
+    <div id="retiro-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
+        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col h-[75vh]">
+            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Gestionar Retiros</h2>
+                <button id="close-retiro-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </header>
+            <div class="flex-grow p-4 overflow-y-auto custom-scrollbar">
+                <h3 class="text-lg font-semibold text-gray-300 mb-2">Retiros de Hoy</h3>
+                <div id="retiros-list" class="space-y-2">
+                    <p class="text-gray-500">No hay retiros registrados hoy.</p>
+                </div>
+            </div>
+            <footer class="p-4 border-t border-gray-700 bg-[#121212]">
+                <form id="retiro-form" class="flex items-center gap-2">
+                    <div class="relative flex-grow">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">$</span>
+                        <input type="number" id="retiro-monto" placeholder="Monto a retirar" class="w-full bg-gray-800 rounded-lg pl-7 pr-3 py-2" required>
+                    </div>
+                    <button id="save-retiro-btn" class="bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg">Añadir</button>
+                </form>
+            </footer>
+        </div>
+    </div>
+
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, getDocs, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDoc, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURACIÓN DE FIREBASE ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyCwmEIoKSmng6XBVZVfJs_hzVFRUD7khHA",
+                authDomain: "gestionventas-33738.firebaseapp.com",
+                projectId: "gestionventas-33738",
+                storageBucket: "gestionventas-33738.appspot.com",
+                messagingSenderId: "493368768006",
+                appId: "1:493368768006:web:cf7d7a1752f395b42e3587"
+            };
+            const appId = firebaseConfig.projectId;
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+
+            // --- SELECTORES DE ELEMENTOS ---
+            const loginScreen = document.getElementById('login-screen');
+            const mainApp = document.getElementById('main-app');
+            const selectAdminBtn = document.getElementById('select-admin-btn');
+            const selectCajeroBtn = document.getElementById('select-cajero-btn');
+            const roleSelection = document.getElementById('role-selection');
+            const passwordSection = document.getElementById('password-section');
+            const passwordPrompt = document.getElementById('password-prompt');
+            const passwordInput = document.getElementById('password-input');
+            const loginBtn = document.getElementById('login-btn');
+            const loginError = document.getElementById('login-error');
+            const backToRoleSelectionBtn = document.getElementById('back-to-role-selection');
+            const fab = document.getElementById('fab');
+            const fabActionModal = document.getElementById('fab-action-modal');
+            const closeFabModalBtn = document.getElementById('close-fab-modal-btn');
+            const actionNewComandaBtn = document.getElementById('action-new-comanda');
+            const actionNewGastoBtn = document.getElementById('action-new-gasto');
+            const gastoModal = document.getElementById('gasto-modal');
+            const closeGastoModalBtn = document.getElementById('close-gasto-modal-btn');
+            const saveGastoBtn = document.getElementById('save-gasto-btn');
+            const gastoForm = document.getElementById('gasto-form');
+            const categoriaSelect = document.getElementById('gasto-categoria');
+            const medioPagoGastoSelect = document.getElementById('gasto-medio-pago');
+            const deCajaContainer = document.getElementById('gasto-de-caja-container');
+            const deCajaCheckbox = document.getElementById('gasto-de-caja-checkbox');
+            const comandaModal = document.getElementById('comanda-modal');
+            const comandaModalTitle = document.getElementById('comanda-modal-title');
+            const comandaIdInput = document.getElementById('comanda-id');
+            const closeComandaModalBtn = document.getElementById('close-comanda-modal-btn');
+            const saveComandaBtn = document.getElementById('save-comanda-btn');
+            const deleteComandaFromEditBtn = document.getElementById('delete-comanda-from-edit-btn');
+            const addServiceBtn = document.getElementById('add-service-btn');
+            const addProductBtn = document.getElementById('add-product-btn');
+            const addOtherBtn = document.getElementById('add-other-btn');
+            const addPaymentBtn = document.getElementById('add-payment-btn');
+            const addDiscountBtn = document.getElementById('add-discount-btn');
+            const discountContainer = document.getElementById('discount-container');
+            const toastEl = document.getElementById('toast');
+            const cajaModal = document.getElementById('caja-modal');
+            const iniciarCajaBtn = document.getElementById('iniciar-caja-btn');
+            const closeCajaModalBtn = document.getElementById('close-caja-modal-btn');
+            const saveCajaBtn = document.getElementById('save-caja-btn');
+            const cajaInicialInput = document.getElementById('caja-inicial-input');
+            const comandaDetailsListEl = document.getElementById('comanda-details-list');
+            const gastosOperativosListEl = document.getElementById('gastos-operativos-list');
+            const gastosAdministrativosListEl = document.getElementById('gastos-administrativos-list');
+            const calendarGridEl = document.getElementById('calendar-grid');
+            const monthYearLabelEl = document.getElementById('month-year-label');
+            const prevMonthBtn = document.getElementById('prev-month-btn');
+            const nextMonthBtn = document.getElementById('next-month-btn');
+            const comandaDetailModal = document.getElementById('comanda-detail-modal');
+            const closeDetailModalBtn = document.getElementById('close-detail-modal-btn');
+            const detailModalBody = document.getElementById('detail-modal-body');
+            const detailModalTitle = document.getElementById('detail-modal-title');
+            const dateSelectorBtn = document.getElementById('date-selector-btn');
+            const calendarModal = document.getElementById('calendar-modal');
+            const deleteComandaBtn = document.getElementById('delete-comanda-btn');
+            const editComandaBtn = document.getElementById('edit-comanda-btn');
+            const gastoDetailModal = document.getElementById('gasto-detail-modal');
+            const closeGastoDetailModalBtn = document.getElementById('close-gasto-detail-modal-btn');
+            const gastoDetailModalBody = document.getElementById('gasto-detail-modal-body');
+            const gastoDetailModalTitle = document.getElementById('gasto-detail-modal-title');
+            const deleteGastoBtn = document.getElementById('delete-gasto-btn');
+            const editGastoBtn = document.getElementById('edit-gasto-btn');
+            const tabDashboardBtn = document.getElementById('tab-dashboard-btn-bottom');
+            const tabReportesBtn = document.getElementById('tab-reportes-btn-bottom');
+            const tabAjustesBtn = document.getElementById('tab-ajustes-btn-bottom');
+            const tabSalirBtn = document.getElementById('tab-salir-btn-bottom');
+            const dashboardContent = document.getElementById('dashboard-content');
+            const reportesContent = document.getElementById('reportes-content');
+            const ajustesContent = document.getElementById('ajustes-content');
+            const presetEditModal = document.getElementById('preset-edit-modal');
+            const closePresetModalBtn = document.getElementById('close-preset-modal-btn');
+            const presetModalTitle = document.getElementById('preset-modal-title');
+            const presetModalBody = document.getElementById('preset-modal-body');
+            const savePresetBtn = document.getElementById('save-preset-btn');
+            const deletePresetBtn = document.getElementById('delete-preset-btn');
+            const reportTypeSelector = document.getElementById('report-type-selector');
+            const reportMovimientosBtn = document.getElementById('report-movimientos-btn');
+            const reportComisionesBtn = document.getElementById('report-comisiones-btn');
+            const reportFinanzasBtn = document.getElementById('report-finanzas-btn');
+            const movimientosView = document.getElementById('movimientos-view');
+            const comisionesView = document.getElementById('comisiones-view');
+            const finanzasView = document.getElementById('finanzas-view');
+            const comisionProfesionalSelect = document.getElementById('comision-profesional-select');
+            const generarReporteComisionBtn = document.getElementById('generar-reporte-comision-btn');
+            const comisionReporteContainer = document.getElementById('comision-reporte-container');
+            const comisionTableBody = document.getElementById('comision-table-body');
+            const comisionTotalFacturado = document.getElementById('comision-total-facturado');
+            const comisionTotalComision = document.getElementById('comision-total-comision');
+            const exportarPdfComisionBtn = document.getElementById('exportar-pdf-comision-btn');
+            const generarReporteFinanzasBtn = document.getElementById('generar-reporte-finanzas-btn');
+            const finanzasReporteContainer = document.getElementById('finanzas-reporte-container');
+            const finanzasTableHead = document.getElementById('finanzas-table-head');
+            const finanzasTableBody = document.getElementById('finanzas-table-body');
+            const finanzasTableFoot = document.getElementById('finanzas-table-foot');
+            const exportarPdfFinanzasBtn = document.getElementById('exportar-pdf-finanzas-btn');
+            const exportarXlsxFinanzasBtn = document.getElementById('exportar-xlsx-finanzas-btn');
+            const installAppBtn = document.getElementById('install-app-btn');
+            const retirarDineroBtn = document.getElementById('retirar-dinero-btn');
+            const retiroModal = document.getElementById('retiro-modal');
+            const closeRetiroModalBtn = document.getElementById('close-retiro-modal-btn');
+            const retirosList = document.getElementById('retiros-list');
+            const retiroForm = document.getElementById('retiro-form');
+            const retiroMontoInput = document.getElementById('retiro-monto');
+            const comandaScrollableContent = comandaModal.querySelector('.custom-scrollbar');
+
+            // --- ESTADO Y CACHÉ GLOBAL ---
+            let mediosDePagoCache = [], serviciosCache = [], profesionalesCache = [], categoriasGastoCache = [], mediosDePagoAdminCache = [];
+            let aperturaCajaDocId = null;
+            let currentDate = new Date();
+            let datesWithRecords = new Set();
+            let currentEditingPreset = { type: null, id: null };
+            let currentUserRole = null;
+            let selectedRoleForLogin = null;
+            let deferredInstallPrompt = null;
+            
+            // --- FUNCIONES DE UTILIDAD ---
+            function log(message) {
+                console.log(message);
+            }
+            function openModal(modal) { modal.classList.add('is-open'); }
+            function closeModal(modal) { modal.classList.remove('is-open'); }
+            function showToast(message, isError = false) {
+                toastEl.textContent = message;
+                toastEl.classList.remove('bg-green-500', 'bg-red-500');
+                toastEl.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
+                toastEl.classList.add('show');
+                setTimeout(() => { toastEl.classList.remove('show'); }, 3000);
+            }
+            function scrollToBottom(element) {
+                setTimeout(() => {
+                    element.scrollTop = element.scrollHeight;
+                }, 100); 
+            }
+
+            // --- LÓGICA DE PWA (INSTALACIÓN Y OFFLINE) ---
+            const manifest = {
+                "name": "Hugo Amadey Admin App",
+                "short_name": "Admin App",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#121212",
+                "theme_color": "#121212",
+                "icons": [
+                    { "src": "https://raw.githubusercontent.com/leandroidecba/HugoAmadeyApp/main/logo-192.png", "type": "image/png", "sizes": "192x192" },
+                    { "src": "https://raw.githubusercontent.com/leandroidecba/HugoAmadeyApp/main/logo-512.png", "type": "image/png", "sizes": "512x512" }
+                ]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            document.querySelector('head').insertAdjacentHTML('beforeend', `<link rel="manifest" href="${manifestURL}">`);
+
+            const swCode = `
+                const CACHE_NAME = 'gestion-financiera-cache-v1';
+                const urlsToCache = [ '/', './index.html' ];
+                self.addEventListener('install', event => { event.waitUntil( caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)) ); });
+                self.addEventListener('fetch', event => { event.respondWith( caches.match(event.request).then(response => response || fetch(event.request)) ); });
+            `;
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            const swURL = URL.createObjectURL(swBlob);
+
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(swURL)
+                    .then(registration => log('Service Worker registrado con éxito:', registration))
+                    .catch(error => log('Error en el registro del Service Worker:', error));
+            }
+
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredInstallPrompt = e;
+                installAppBtn.classList.remove('hidden');
+            });
+
+            installAppBtn.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    deferredInstallPrompt.prompt();
+                    const { outcome } = await deferredInstallPrompt.userChoice;
+                    log(`User response to the install prompt: ${outcome}`);
+                    deferredInstallPrompt = null;
+                    installAppBtn.classList.add('hidden');
+                }
+            });
+
+            // --- LÓGICA DE LOGIN Y ROLES ---
+            async function hashPassword(password) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(password);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            async function verifyLogin(role, password) {
+                loginError.textContent = '';
+                const enteredHash = await hashPassword(password);
+                try {
+                    const roleDocRef = doc(db, `artifacts/${appId}/public/data/roles`, role);
+                    const roleDocSnap = await getDoc(roleDocRef);
+
+                    if (roleDocSnap.exists() && enteredHash === roleDocSnap.data().passwordHash) {
+                        currentUserRole = role;
+                        loginScreen.classList.add('hidden');
+                        mainApp.classList.remove('hidden');
+                        applyRolePermissions();
+                    } else {
+                        loginError.textContent = 'Contraseña incorrecta.';
+                    }
+                } catch (error) {
+                    log(`Error al verificar login: ${error.message}`);
+                    loginError.textContent = 'Error al verificar. Intente de nuevo.';
+                }
+            }
+
+            function showPasswordScreen(role) {
+                selectedRoleForLogin = role;
+                roleSelection.classList.add('hidden');
+                passwordSection.classList.remove('hidden');
+                passwordPrompt.textContent = `Ingresar como ${role.charAt(0).toUpperCase() + role.slice(1)}`;
+                passwordInput.value = '';
+                loginError.textContent = '';
+                passwordInput.focus();
+            }
+
+            function showRoleSelectionScreen() {
+                selectedRoleForLogin = null;
+                passwordSection.classList.add('hidden');
+                roleSelection.classList.remove('hidden');
+            }
+
+            selectAdminBtn.addEventListener('click', () => showPasswordScreen('admin'));
+            selectCajeroBtn.addEventListener('click', () => showPasswordScreen('cajero'));
+            backToRoleSelectionBtn.addEventListener('click', showRoleSelectionScreen);
+            loginBtn.addEventListener('click', () => { if (selectedRoleForLogin) verifyLogin(selectedRoleForLogin, passwordInput.value); });
+            passwordInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') loginBtn.click(); });
+
+            function logout() {
+                currentUserRole = null;
+                mainApp.classList.add('hidden');
+                showRoleSelectionScreen();
+                loginScreen.classList.remove('hidden');
+                switchTab('dashboard'); 
+            }
+
+            function applyRolePermissions() {
+                // Reset to admin defaults first
+                reportFinanzasBtn.classList.remove('hidden');
+                reportTypeSelector.classList.replace('grid-cols-2', 'grid-cols-3');
+                document.getElementById('dashboard-total-facturado-card').classList.remove('hidden');
+                document.getElementById('date-selector-btn').classList.remove('hidden');
+                document.getElementById('admin-gastos-section').classList.remove('hidden');
+                document.getElementById('summary-admin-gastos-row').classList.remove('hidden');
+                document.getElementById('ajustes-content').innerHTML = `
+                    <div class="bg-gray-900 p-1 rounded-lg"><button class="w-full py-2 px-4 rounded-md text-sm font-semibold bg-gray-700 text-white">Presets</button></div>
+                    <section><div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold text-gray-300">Servicios</h2><button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="servicios">+ Añadir</button></div><div id="ajustes-servicios-list" class="space-y-2"></div></section>
+                    <section><div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold text-gray-300">Profesionales</h2><button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="profesionales">+ Añadir</button></div><div id="ajustes-profesionales-list" class="space-y-2"></div></section>
+                    <section><div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold text-gray-300">Medios de Pago (Comandas)</h2><button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="mediosDePago">+ Añadir</button></div><div id="ajustes-medios-pago-list" class="space-y-2"></div></section>
+                    <section><div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold text-gray-300">Categorías de Gasto</h2><button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="categoriasGasto">+ Añadir</button></div><div id="ajustes-categorias-gasto-list" class="space-y-2"></div></section>
+                    <section><div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold text-gray-300">Medios de Pago (Admin)</h2><button class="add-preset-btn text-sm bg-gray-600 px-3 py-1 rounded-md" data-type="mediosDePagoAdmin">+ Añadir</button></div><div id="ajustes-medios-pago-admin-list" class="space-y-2"></div></section>`;
+                renderAjustesContent();
+
+                if (currentUserRole === 'cajero') {
+                    reportFinanzasBtn.classList.add('hidden');
+                    reportTypeSelector.classList.replace('grid-cols-3', 'grid-cols-2');
+                    document.getElementById('dashboard-total-facturado-card').classList.add('hidden');
+                    document.getElementById('date-selector-btn').classList.add('hidden');
+                    document.getElementById('admin-gastos-section').classList.add('hidden');
+                    document.getElementById('summary-admin-gastos-row').classList.add('hidden');
+                    const today = new Date().toISOString().slice(0, 10);
+                    fetchDetailsForDate(today);
+                    document.getElementById('ajustes-content').innerHTML = '<p class="p-6 text-center text-gray-500">No tienes permisos para ver esta sección.</p>';
+                }
+            }
+
+            tabSalirBtn.addEventListener('click', logout);
+
+
+            // --- LÓGICA DE PESTAÑAS ---
+            function switchTab(activeTab) {
+                const tabs = {
+                    dashboard: { btn: tabDashboardBtn, content: dashboardContent },
+                    reportes: { btn: tabReportesBtn, content: reportesContent },
+                    ajustes: { btn: tabAjustesBtn, content: ajustesContent }
+                };
+                Object.values(tabs).forEach(tab => {
+                    tab.btn.classList.replace('bottom-nav-active', 'bottom-nav-inactive');
+                    tab.content.classList.add('hidden');
+                });
+                tabs[activeTab].btn.classList.replace('bottom-nav-inactive', 'bottom-nav-active');
+                tabs[activeTab].content.classList.remove('hidden');
+            }
+
+            tabDashboardBtn.addEventListener('click', () => switchTab('dashboard'));
+            tabReportesBtn.addEventListener('click', () => {
+                switchTab('reportes');
+                const todayString = new Date().toISOString().slice(0, 10);
+                updateDateSelectorButton(todayString);
+                fetchDetailsForDate(todayString);
+            });
+            tabAjustesBtn.addEventListener('click', () => switchTab('ajustes'));
+
+            // --- INICIALIZACIÓN Y AUTENTICACIÓN ---
+            log("Script iniciado. Esperando conexión a Firebase...");
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    log("Autenticación anónima exitosa.");
+                    loadAllPresets();
+                    listenToDailyData();
+                    fetchAllInitialDataForReports();
+                } else {
+                    signInAnonymously(auth).catch(error => log(`Error de autenticación: ${error.message}`));
+                }
+            });
+
+            // --- LÓGICA DE CARGA Y DASHBOARD ---
+            async function loadAllPresets() {
+                try {
+                    const refs = {
+                        categoriasGasto: collection(db, `artifacts/${appId}/public/data/categoriasGasto`),
+                        mediosDePagoAdmin: collection(db, `artifacts/${appId}/public/data/mediosDePagoAdmin`),
+                        servicios: collection(db, `artifacts/${appId}/public/data/servicios`),
+                        profesionales: collection(db, `artifacts/${appId}/public/data/profesionales`),
+                        mediosDePago: collection(db, `artifacts/${appId}/public/data/mediosDePago`),
+                    };
+                    const [catSnap, mpAdminSnap, servSnap, profSnap, mpSnap] = await Promise.all([
+                        getDocs(refs.categoriasGasto), getDocs(refs.mediosDePagoAdmin), getDocs(refs.servicios),
+                        getDocs(refs.profesionales), getDocs(refs.mediosDePago)
+                    ]);
+                    categoriasGastoCache = catSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+                    mediosDePagoAdminCache = mpAdminSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+                    serviciosCache = servSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+                    profesionalesCache = profSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+                    mediosDePagoCache = mpSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+                    
+                    categoriaSelect.innerHTML = categoriasGastoCache.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
+                    medioPagoGastoSelect.innerHTML = mediosDePagoAdminCache.map(m => `<option value="${m.nombre}">${m.nombre}</option>`).join('');
+                    comisionProfesionalSelect.innerHTML = '<option value="">Seleccionar Profesional</option>' + profesionalesCache.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+                    
+                    log(`Presets cargados: ${categoriasGastoCache.length} categorías, ${serviciosCache.length} servicios, etc.`);
+                    renderAjustesContent();
+                } catch (error) {
+                    log(`[ERROR] al cargar presets: ${error.message}`);
+                }
+            }
+            
+            function listenToDailyData() {
+                const today = new Date().toISOString().slice(0, 10);
+                const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", "==", today));
+                const qMovimientos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("date", "==", today));
+                onSnapshot(qComandas, (snapshot) => {
+                    const comandas = snapshot.docs.map(doc => doc.data());
+                    onSnapshot(qMovimientos, (movSnapshot) => {
+                        const movimientos = movSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                        updateDashboard(comandas, movimientos);
+                    });
+                });
+            }
+
+            function updateDashboard(comandas, movimientos){
+                let totalIngresos = 0, ingresosEfectivo = 0, ingresosDigital = 0, gastosOperativos = 0, aperturaCaja = 0, totalRetiros = 0;
+                let gastosDeCaja = 0;
+
+                const aperturaDoc = movimientos.find(m => m.type === 'apertura');
+                if (aperturaDoc) {
+                    aperturaCaja = aperturaDoc.amount;
+                    aperturaCajaDocId = aperturaDoc.id;
+                    document.getElementById('caja-status-text').textContent = `Iniciada con $${aperturaCaja.toLocaleString('es-AR')}`;
+                    iniciarCajaBtn.textContent = 'Modificar Caja';
+                }
+                movimientos.filter(m => m.type === 'retiro').forEach(r => totalRetiros += r.amount);
+                document.getElementById('retiros-status-text').textContent = `Total retirado hoy: $${totalRetiros.toLocaleString('es-AR')}`;
+
+                const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+                const mediosDigitales = mediosDePagoCache.filter(mp => mp.esDigital).map(mp => mp.nombre);
+                comandas.forEach(comanda => {
+                    (comanda.pagos || []).forEach(pago => {
+                        totalIngresos += pago.monto;
+                        if (mediosDigitales.includes(pago.metodo)) {
+                            ingresosDigital += pago.monto;
+                        } else if (pago.metodo === 'Efectivo') {
+                            ingresosEfectivo += pago.monto;
+                        }
+                    });
+                });
+
+                const allGastos = movimientos.filter(m => m.type === 'gasto');
+                gastosOperativos = allGastos
+                    .filter(gasto => categoriasOperativas.includes(gasto.categoria))
+                    .reduce((sum, gasto) => sum + gasto.amount, 0);
+                gastosDeCaja = allGastos
+                    .filter(gasto => gasto.deCaja === true)
+                    .reduce((sum, gasto) => sum + gasto.amount, 0);
+                
+                const balance = aperturaCaja + ingresosEfectivo - gastosDeCaja - totalRetiros;
+
+                document.getElementById('dashboard-total-ingresos').textContent = `$${totalIngresos.toLocaleString('es-AR')}`;
+                document.getElementById('dashboard-ingresos-efectivo').textContent = `$${ingresosEfectivo.toLocaleString('es-AR')}`;
+                document.getElementById('dashboard-ingresos-digital').textContent = `$${ingresosDigital.toLocaleString('es-AR')}`;
+                document.getElementById('dashboard-gastos-operativos').textContent = `-$${gastosOperativos.toLocaleString('es-AR')}`;
+                const balanceEl = document.getElementById('dashboard-balance');
+                balanceEl.textContent = `$${balance.toLocaleString('es-AR')}`;
+                balanceEl.classList.toggle('text-green-400', balance >= 0);
+                balanceEl.classList.toggle('text-red-400', balance < 0);
+            }
+
+            // --- LÓGICA DE LA PESTAÑA DE AJUSTES ---
+            function renderAjustesContent() {
+                const renderList = (data, containerId, formatter) => {
+                    const container = document.getElementById(containerId);
+                    if (!container) return;
+                    if (data.length === 0) {
+                        container.innerHTML = `<p class="text-gray-500">No hay elementos.</p>`;
+                        return;
+                    }
+                    container.innerHTML = data.map(formatter).join('');
+                };
+                const editButton = (type, id) => `<button class="edit-preset-btn" data-type="${type}" data-id="${id}"><svg class="w-5 h-5 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>`;
+
+                renderList(serviciosCache, 'ajustes-servicios-list', s => `<div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center"><div><span>${s.nombre}</span><span class="text-gray-400 ml-4 font-semibold">$${(s.precio || 0).toLocaleString('es-AR')}</span><span class="text-xs bg-purple-500/50 text-purple-300 px-2 py-1 rounded-full ml-2">${s.categoria || 'N/A'}</span></div>${editButton('servicios', s.id)}</div>`);
+                renderList(profesionalesCache, 'ajustes-profesionales-list', p => `<div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center"><span>${p.nombre}</span><div class="text-xs text-gray-400 space-x-2"><span>P:${p.comisiones?.P || 0}%</span><span>S:${p.comisiones?.S || 0}%</span><span>T:${p.comisiones?.T || 0}%</span><span>V:${p.comisiones?.V || 0}%</span></div>${editButton('profesionales', p.id)}</div>`);
+                renderList(mediosDePagoCache, 'ajustes-medios-pago-list', m => `<div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center"><span>${m.nombre} ${m.esDigital ? '<span class="text-xs bg-blue-500/50 text-blue-300 px-2 py-1 rounded-full ml-2">Digital</span>' : ''}</span>${editButton('mediosDePago', m.id)}</div>`);
+                renderList(categoriasGastoCache, 'ajustes-categorias-gasto-list', c => `<div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center"><span>${c.nombre} ${c.visibleParaCajero ? '<span class="text-xs bg-green-500/50 text-green-300 px-2 py-1 rounded-full ml-2">Operativo</span>' : ''}</span>${editButton('categoriasGasto', c.id)}</div>`);
+                renderList(mediosDePagoAdminCache, 'ajustes-medios-pago-admin-list', m => `<div class="bg-gray-800 p-3 rounded-lg flex justify-between items-center"><span>${m.nombre}</span>${editButton('mediosDePagoAdmin', m.id)}</div>`);
+            }
+
+            // --- LÓGICA DEL VISOR DE REPORTES ---
+            async function fetchAllInitialDataForReports() {
+                try {
+                    const comandasSnapshot = await getDocs(collection(db, `artifacts/${appId}/public/data/comandas`));
+                    datesWithRecords.clear();
+                    comandasSnapshot.forEach(doc => {
+                        if (doc.data().fecha) datesWithRecords.add(doc.data().fecha);
+                    });
+                    renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                    const todayString = new Date().toISOString().slice(0, 10);
+                    updateDateSelectorButton(todayString);
+                    fetchDetailsForDate(todayString);
+                } catch (error) {
+                    log(`[ERROR] en fetchAllInitialDataForReports: ${error.message}`);
+                }
+            }
+
+            function renderCalendar(year, month) {
+                if (!calendarGridEl || !monthYearLabelEl) {
+                    log("Error: Calendar elements not found in DOM.");
+                    return;
+                }
+                calendarGridEl.innerHTML = '';
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                monthYearLabelEl.textContent = new Date(year, month).toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
+                ['D', 'L', 'M', 'M', 'J', 'V', 'S'].forEach(day => {
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'font-bold text-xs text-gray-400';
+                    dayEl.textContent = day;
+                    calendarGridEl.appendChild(dayEl);
+                });
+                for (let i = 0; i < firstDay; i++) calendarGridEl.appendChild(document.createElement('div'));
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const dayEl = document.createElement('button');
+                    dayEl.textContent = i;
+                    const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    dayEl.className = 'p-2 rounded-full hover:bg-gray-700 transition-colors';
+                    if (datesWithRecords.has(dateString)) dayEl.classList.add('day-with-record');
+                    dayEl.addEventListener('click', () => {
+                        updateDateSelectorButton(dateString);
+                        fetchDetailsForDate(dateString);
+                        closeModal(calendarModal);
+                    });
+                    calendarGridEl.appendChild(dayEl);
+                }
+            }
+            
+            function updateDateSelectorButton(dateString) {
+                 const date = new Date(dateString + 'T00:00:00');
+                 dateSelectorBtn.textContent = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            }
+
+            async function fetchDetailsForDate(date) {
+                log(`Buscando detalles para: ${date}...`);
+                comandaDetailsListEl.innerHTML = '<p class="text-gray-500">Buscando...</p>';
+                gastosOperativosListEl.innerHTML = '<p class="text-gray-500">Buscando...</p>';
+                gastosAdministrativosListEl.innerHTML = '<p class="text-gray-500">Buscando...</p>';
+                try {
+                    const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", "==", date));
+                    const qGastos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("date", "==", date), where("type", "==", "gasto"));
+                    const [comandasSnapshot, gastosSnapshot] = await Promise.all([getDocs(qComandas), getDocs(qGastos)]);
+                    let totalIngresos = 0, totalRecargos = 0, totalGastosOp = 0, totalGastosAdmin = 0;
+
+                    const comandasData = comandasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    comandasData.sort((a, b) => (b.hora || "00:00").localeCompare(a.hora || "00:00"));
+
+                    comandaDetailsListEl.innerHTML = comandasData.length === 0 ? `<p class="text-gray-500">Sin comandas.</p>` : '';
+                    comandasData.forEach(comanda => {
+                        const recargosComanda = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.recargo || 0), 0);
+                        const ingresoReal = (comanda.total || 0) - recargosComanda;
+                        totalIngresos += ingresoReal;
+                        totalRecargos += recargosComanda;
+                        const comandaEl = document.createElement('button');
+                        comandaEl.className = 'w-full text-left bg-gray-800 p-3 rounded-lg hover:bg-gray-700 transition-colors';
+                        comandaEl.innerHTML = `<div class="flex justify-between items-center"><p class="font-semibold">Comanda #${comanda.numero || 'N/A'}</p><p class="text-green-400 font-bold">$${(ingresoReal || 0).toLocaleString('es-AR')}</p></div><p class="text-sm text-gray-400">Cliente: ${comanda.cliente || 'No especificado'}</p>`;
+                        comandaEl.addEventListener('click', () => openComandaDetailModal(comanda.id, comanda));
+                        comandaDetailsListEl.appendChild(comandaEl);
+                    });
+
+                    gastosOperativosListEl.innerHTML = '';
+                    gastosAdministrativosListEl.innerHTML = '';
+                    if (gastosSnapshot.empty) {
+                        gastosOperativosListEl.innerHTML = `<p class="text-gray-500">Sin gastos operativos.</p>`;
+                        gastosAdministrativosListEl.innerHTML = `<p class="text-gray-500">Sin gastos administrativos.</p>`;
+                    } else {
+                        const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+                        let operativosCount = 0, adminCount = 0;
+                        gastosSnapshot.forEach(doc => {
+                            const gasto = doc.data();
+                            const gastoEl = document.createElement('button');
+                            gastoEl.className = 'w-full text-left bg-gray-800 p-3 rounded-lg hover:bg-gray-700 transition-colors';
+                            gastoEl.innerHTML = `<div class="flex justify-between items-center"><p class="font-semibold">${gasto.concept}</p><p class="text-red-400 font-bold">-$${(gasto.amount || 0).toLocaleString('es-AR')}</p></div><p class="text-sm text-gray-400">Categoría: ${gasto.categoria || 'Sin categoría'}</p>`;
+                            gastoEl.addEventListener('click', () => openGastoDetailModal(doc.id, gasto));
+                            if (categoriasOperativas.includes(gasto.categoria)) {
+                                gastosOperativosListEl.appendChild(gastoEl);
+                                totalGastosOp += gasto.amount || 0;
+                                operativosCount++;
+                            } else {
+                                gastosAdministrativosListEl.appendChild(gastoEl);
+                                totalGastosAdmin += gasto.amount || 0;
+                                adminCount++;
+                            }
+                        });
+                        if(operativosCount === 0) gastosOperativosListEl.innerHTML = `<p class="text-gray-500">Sin gastos operativos.</p>`;
+                        if(adminCount === 0) gastosAdministrativosListEl.innerHTML = `<p class="text-gray-500">Sin gastos administrativos.</p>`;
+                    }
+                    document.getElementById('summary-ingresos').textContent = `$${totalIngresos.toLocaleString('es-AR')}`;
+                    document.getElementById('summary-recargos').textContent = `+$${totalRecargos.toLocaleString('es-AR')}`;
+                    document.getElementById('summary-gastos-op').textContent = `-$${totalGastosOp.toLocaleString('es-AR')}`;
+                    document.getElementById('summary-gastos-admin').textContent = `-$${totalGastosAdmin.toLocaleString('es-AR')}`;
+                    const balance = totalIngresos - totalGastosOp;
+                    const balanceEl = document.getElementById('summary-balance');
+                    balanceEl.textContent = `$${balance.toLocaleString('es-AR')}`;
+                    balanceEl.classList.toggle('text-green-400', balance >= 0);
+                    balanceEl.classList.toggle('text-red-400', balance < 0);
+                } catch (error) {
+                    log(`[ERROR] al buscar detalles para ${date}: ${error.message}`);
+                }
+            }
+
+            function openComandaDetailModal(id, comanda) {
+                document.getElementById('detail-comanda-id').value = id;
+                detailModalTitle.textContent = `Detalle Comanda #${comanda.numero || 'N/A'}`;
+                let itemsHTML = comanda.items.map(item => `<div class="bg-gray-700 p-2 rounded-md"><div class="flex justify-between font-medium"><span>${item.servicioNombre}</span><span>$${item.precio.toLocaleString('es-AR')}</span></div><div class="text-xs text-gray-400"><span>Profesional: ${item.profesionalNombre}</span></div></div>`).join('');
+                let pagosHTML = comanda.pagos.map(pago => `<div class="bg-gray-700 p-2 rounded-md"><div class="flex justify-between font-medium"><span>${pago.metodo}</span><span class="text-green-400">$${pago.monto.toLocaleString('es-AR')}</span></div>${pago.recargo > 0 ? `<div class="text-xs text-yellow-400">Recargo: $${pago.recargo.toLocaleString('es-AR')}</div>` : ''}</div>`).join('');
+                detailModalBody.innerHTML = `<div class="space-y-2"><p><span class="font-semibold text-gray-400">Cliente:</span> ${comanda.cliente || 'No especificado'}</p><p><span class="font-semibold text-gray-400">Fecha:</span> ${comanda.fecha} - ${comanda.hora}hs</p></div><hr class="border-gray-600"><div><h3 class="font-semibold mb-2">Conceptos</h3><div class="space-y-2">${itemsHTML}</div></div><div><h3 class="font-semibold mb-2">Pagos</h3><div class="space-y-2">${pagosHTML}</div></div><hr class="border-gray-600"><div class="flex justify-between text-lg font-bold"><span>TOTAL:</span><span>$${comanda.total.toLocaleString('es-AR')}</span></div>`;
+                openModal(comandaDetailModal);
+            }
+            
+            function openGastoDetailModal(id, gasto) {
+                document.getElementById('detail-gasto-id').value = id;
+                gastoDetailModalTitle.textContent = `Detalle de Gasto`;
+                gastoDetailModalBody.innerHTML = `<div class="space-y-2 text-sm"><p><span class="font-semibold text-gray-400">Concepto:</span> ${gasto.concept}</p><p><span class="font-semibold text-gray-400">Categoría:</span> ${gasto.categoria}</p><p><span class="font-semibold text-gray-400">Monto:</span> $${gasto.amount.toLocaleString('es-AR')}</p><p><span class="font-semibold text-gray-400">Fecha:</span> ${gasto.date} - ${gasto.time}hs</p></div>`;
+                openModal(gastoDetailModal);
+            }
+
+            // --- MANEJO DE EVENTOS (EVENT LISTENERS) ---
+            fab.addEventListener('click', () => openModal(fabActionModal));
+            closeFabModalBtn.addEventListener('click', () => closeModal(fabActionModal));
+            actionNewComandaBtn.addEventListener('click', async () => {
+                resetComandaModal();
+
+                const comandasRef = collection(db, `artifacts/${appId}/public/data/comandas`);
+                const q = query(comandasRef);
+                const querySnapshot = await getDocs(q);
+                let maxComandaNumber = 0;
+                querySnapshot.forEach((doc) => {
+                    const comanda = doc.data();
+                    const comandaNumber = parseInt(comanda.numero, 10);
+                    if (!isNaN(comandaNumber) && comandaNumber > maxComandaNumber) {
+                        maxComandaNumber = comandaNumber;
+                    }
+                });
+                document.getElementById('comanda-numero').value = maxComandaNumber + 1;
+
+                comandaModalTitle.textContent = "Nueva Comanda";
+                saveComandaBtn.textContent = "Finalizar y Guardar";
+                deleteComandaFromEditBtn.classList.add('hidden');
+                saveComandaBtn.classList.add('col-span-2');
+                closeModal(fabActionModal); 
+                openModal(comandaModal); 
+            });
+            actionNewGastoBtn.addEventListener('click', () => {
+                if (currentUserRole === 'cajero') {
+                    const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero);
+                    categoriaSelect.innerHTML = categoriasOperativas.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
+                } else {
+                    categoriaSelect.innerHTML = categoriasGastoCache.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
+                }
+                gastoForm.reset();
+                medioPagoGastoSelect.value = 'Efectivo'; 
+                medioPagoGastoSelect.dispatchEvent(new Event('change'));
+                deCajaCheckbox.checked = true;
+                closeModal(fabActionModal); 
+                openModal(gastoModal); 
+            });
+            closeGastoModalBtn.addEventListener('click', () => closeModal(gastoModal));
+            closeComandaModalBtn.addEventListener('click', () => closeModal(comandaModal));
+            closeCajaModalBtn.addEventListener('click', () => closeModal(cajaModal));
+            iniciarCajaBtn.addEventListener('click', () => openModal(cajaModal));
+            prevMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(currentDate.getFullYear(), currentDate.getMonth()); });
+            nextMonthBtn.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(currentDate.getFullYear(), currentDate.getMonth()); });
+            dateSelectorBtn.addEventListener('click', () => openModal(calendarModal));
+            calendarModal.addEventListener('click', (e) => { if (e.target === calendarModal) closeModal(calendarModal); });
+            closeDetailModalBtn.addEventListener('click', () => closeModal(comandaDetailModal));
+            closeGastoDetailModalBtn.addEventListener('click', () => closeModal(gastoDetailModal));
+            closePresetModalBtn.addEventListener('click', () => closeModal(presetEditModal));
+            
+            medioPagoGastoSelect.addEventListener('change', () => {
+                if (medioPagoGastoSelect.value.toLowerCase() === 'efectivo') {
+                    deCajaContainer.classList.remove('hidden');
+                } else {
+                    deCajaContainer.classList.add('hidden');
+                    deCajaCheckbox.checked = false;
+                }
+            });
+            
+            // --- LÓGICA DE GUARDADO Y ELIMINACIÓN ---
+            saveGastoBtn.addEventListener('click', () => gastoForm.requestSubmit());
+            gastoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const concepto = document.getElementById('gasto-concepto').value, categoria = categoriaSelect.value, medioPago = medioPagoGastoSelect.value, monto = parseFloat(document.getElementById('gasto-monto').value);
+                if (!concepto || !categoria || !medioPago || isNaN(monto) || monto <= 0) { showToast("Por favor, completa todos los campos.", true); return; }
+                const now = new Date();
+                const esDeCaja = deCajaCheckbox.checked && !deCajaContainer.classList.contains('hidden');
+                const newGasto = { 
+                    type: 'gasto', 
+                    concept: concepto, 
+                    categoria, 
+                    paymentMethod: medioPago, 
+                    amount: monto, 
+                    deCaja: esDeCaja,
+                    date: now.toISOString().slice(0, 10), 
+                    time: now.toTimeString().slice(0, 5), 
+                    createdAt: serverTimestamp() 
+                };
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newGasto);
+                    showToast('Gasto guardado correctamente.');
+                    gastoForm.reset();
+                    closeModal(gastoModal);
+                } catch (error) {
+                    log(`[ERROR] al guardar el gasto: ${error.message}`);
+                    showToast('Hubo un error al guardar el gasto.', true);
+                }
+            });
+
+            const servicioTemplate = (item = {}) => {
+                const profesionalesOptions = profesionalesCache.map(p => `<option value="${p.id}" ${p.id === item.profesionalId ? 'selected' : ''}>${p.nombre}</option>`).join('');
+                return `<div class="item-entry bg-gray-800 p-3 rounded-lg space-y-2" data-type="servicio">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="relative">
+                                    <input type="text" class="item-service-search w-full bg-gray-700 rounded-md px-2 py-2 text-sm" placeholder="Buscar servicio..." value="${item.servicioNombre || ''}">
+                                    <input type="hidden" class="item-service-id" value="${item.servicioId || ''}">
+                                    <div class="search-results absolute z-10 w-full bg-gray-600 rounded-b-md hidden custom-scrollbar"></div>
+                                </div>
+                                <select class="item-profesional-selector w-full bg-gray-700 rounded-md px-2 py-2 text-sm"><option value="">Selec. profesional</option>${profesionalesOptions}</select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative flex-grow"><span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-sm">$</span><input type="number" value="${item.precio || 0}" class="price-input w-full bg-gray-700 rounded-md pl-6 pr-2 py-2 text-sm"></div>
+                                <button class="remove-item-btn text-gray-500 hover:text-red-500"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                            </div>
+                            <div class="flex items-center"><input type="checkbox" ${item.isVoucher ? 'checked' : ''} class="item-voucher-check h-4 w-4 rounded bg-gray-700 border-gray-600"><label class="ml-2 text-sm text-gray-300">Voucher</label></div>
+                        </div>`;
+            };
+             const productoTemplate = (item = {}) => {
+                const profesionalesOptions = profesionalesCache.map(p => `<option value="${p.id}" ${p.id === item.profesionalId ? 'selected' : ''}>${p.nombre}</option>`).join('');
+                return `<div class="item-entry bg-gray-800 p-3 rounded-lg space-y-2" data-type="producto"><div class="grid grid-cols-2 gap-2"><input type="text" placeholder="Nombre del Producto" value="${item.servicioNombre || ''}" class="item-name-input w-full bg-gray-700 rounded-md px-2 py-2 text-sm"><select class="item-profesional-selector w-full bg-gray-700 rounded-md px-2 py-2 text-sm"><option value="">Selec. profesional</option>${profesionalesOptions}</select></div><div class="flex items-center gap-2"><div class="relative flex-grow"><span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-sm">$</span><input type="number" value="${item.precio || 0}" class="price-input w-full bg-gray-700 rounded-md pl-6 pr-2 py-2 text-sm"></div><button class="remove-item-btn text-gray-500 hover:text-red-500"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></div>`;
+            };
+            const otroTemplate = (item = {}) => {
+                return `<div class="item-entry bg-gray-800 p-3 rounded-lg space-y-2" data-type="otro"><div class="grid grid-cols-2 gap-2"><input type="text" placeholder="Concepto" value="${item.servicioNombre || ''}" class="item-name-input w-full bg-gray-700 rounded-md px-2 py-2 text-sm col-span-2"></div><div class="flex items-center gap-2"><div class="relative flex-grow"><span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-sm">$</span><input type="number" value="${item.precio || 0}" class="price-input w-full bg-gray-700 rounded-md pl-6 pr-2 py-2 text-sm"></div><button class="remove-item-btn text-gray-500 hover:text-red-500"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></div>`;
+            };
+            const paymentTemplate = (pago = {}) => {
+                const paymentOptions = mediosDePagoCache.map(p => `<option value="${p.nombre}" ${p.nombre === pago.metodo ? 'selected' : ''}>${p.nombre}</option>`).join('');
+                return `<div class="payment-item bg-gray-800 p-3 rounded-lg space-y-2"><div class="flex items-center gap-2"><select class="payment-method-selector w-full bg-gray-700 rounded-md px-2 py-2 text-sm"><option value="">Seleccionar Medio de pago</option>${paymentOptions}</select><div class="relative flex-grow"><span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 text-sm">$</span><input type="number" placeholder="0" value="${pago.monto || ''}" class="payment-amount-input w-full bg-gray-700 rounded-md pl-6 pr-2 py-2 text-sm"></div><button class="remove-item-btn text-gray-500 hover:text-red-500"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div><div class="flex items-center justify-end gap-2 text-xs"><label class="text-gray-400">Recargo:</label><div class="relative"><span class="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400">$</span><input type="number" placeholder="Monto" value="${pago.recargo || ''}" class="surcharge-amount-input w-20 bg-gray-700 rounded-md pl-5 pr-1 py-1"></div><div class="relative"><input type="number" placeholder="%" class="surcharge-percent-input w-16 bg-gray-700 rounded-md pl-2 pr-5 py-1"><span class="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400">%</span></div></div></div>`;
+            };
+            const discountTemplate = (discount = {}) => {
+                return `<div class="discount-item bg-gray-800 p-3 rounded-lg space-y-2">
+                    <div class="flex items-center gap-2">
+                        <select class="discount-type-selector w-full bg-gray-700 rounded-md px-2 py-2 text-sm">
+                            <option value="percentage" ${discount.type === 'percentage' ? 'selected' : ''}>Porcentaje (%)</option>
+                            <option value="amount" ${discount.type === 'amount' ? 'selected' : ''}>Monto Fijo ($)</option>
+                        </select>
+                        <div class="relative flex-grow">
+                            <input type="number" placeholder="0" value="${discount.value || ''}" class="discount-value-input w-full bg-gray-700 rounded-md px-2 py-2 text-sm">
+                        </div>
+                        <button class="remove-discount-btn text-gray-500 hover:text-red-500"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                    </div>
+                </div>`;
+            };
+
+            addServiceBtn.addEventListener('click', () => {
+                document.getElementById('items-list').insertAdjacentHTML('beforeend', servicioTemplate());
+                scrollToBottom(comandaScrollableContent);
+            });
+            addProductBtn.addEventListener('click', () => {
+                document.getElementById('items-list').insertAdjacentHTML('beforeend', productoTemplate());
+                scrollToBottom(comandaScrollableContent);
+            });
+            addOtherBtn.addEventListener('click', () => {
+                document.getElementById('items-list').insertAdjacentHTML('beforeend', otroTemplate());
+                scrollToBottom(comandaScrollableContent);
+            });
+            addPaymentBtn.addEventListener('click', () => {
+                document.getElementById('payments-list').insertAdjacentHTML('beforeend', paymentTemplate());
+                scrollToBottom(comandaScrollableContent);
+            });
+            addDiscountBtn.addEventListener('click', () => {
+                discountContainer.innerHTML = discountTemplate();
+                discountContainer.classList.remove('hidden');
+                addDiscountBtn.classList.add('hidden');
+                scrollToBottom(comandaScrollableContent);
+            });
+            
+            comandaModal.addEventListener('input', (e) => {
+                if (e.target.classList.contains('item-service-search')) {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const resultsContainer = e.target.nextElementSibling.nextElementSibling;
+                    if(searchTerm.length > 0) {
+                        const filteredServices = serviciosCache.filter(s => s.nombre.toLowerCase().includes(searchTerm));
+                        resultsContainer.innerHTML = filteredServices.map(s => `<div class="p-2 hover:bg-gray-500 cursor-pointer" data-id="${s.id}" data-price="${s.precio}">${s.nombre}</div>`).join('');
+                        resultsContainer.classList.remove('hidden');
+                    } else {
+                        resultsContainer.classList.add('hidden');
+                    }
+                }
+                calculateComandaTotals();
+            });
+
+            comandaModal.addEventListener('click', (e) => {
+                if (e.target.closest('.search-results > div')) {
+                    const serviceDiv = e.target.closest('.search-results > div');
+                    const itemEntry = serviceDiv.closest('.item-entry');
+                    itemEntry.querySelector('.item-service-search').value = serviceDiv.textContent;
+                    itemEntry.querySelector('.item-service-id').value = serviceDiv.dataset.id;
+                    itemEntry.querySelector('.price-input').value = serviceDiv.dataset.price;
+                    serviceDiv.parentElement.classList.add('hidden');
+                    calculateComandaTotals();
+                }
+                if (e.target.closest('.remove-item-btn')) {
+                    e.target.closest('.item-entry, .payment-item').remove();
+                    calculateComandaTotals();
+                }
+                if (e.target.closest('.remove-discount-btn')) {
+                    e.target.closest('.discount-item').remove();
+                    addDiscountBtn.classList.remove('hidden');
+                    discountContainer.classList.add('hidden');
+                    calculateComandaTotals();
+                }
+            });
+
+            function calculateComandaTotals() {
+                let subtotal = 0;
+                document.querySelectorAll('#items-list .item-entry').forEach(item => {
+                    const price = parseFloat(item.querySelector('.price-input').value) || 0;
+                    subtotal += price;
+                });
+
+                let discountAmount = 0;
+                const discountItem = document.querySelector('#discount-container .discount-item');
+                if (discountItem) {
+                    const type = discountItem.querySelector('.discount-type-selector').value;
+                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
+                    if (type === 'percentage') {
+                        discountAmount = subtotal * (value / 100);
+                    } else {
+                        discountAmount = value;
+                    }
+                }
+
+                const totalAfterDiscount = subtotal - discountAmount;
+
+                let totalPaid = 0, totalSurcharges = 0, paymentSummaryHTML = '';
+                document.querySelectorAll('#payments-list .payment-item').forEach(item => {
+                    const baseAmount = parseFloat(item.querySelector('.payment-amount-input').value) || 0;
+                    if (baseAmount === 0) return;
+                    
+                    let surchargeForThisPayment = 0;
+                    const surchargeAmount = parseFloat(item.querySelector('.surcharge-amount-input').value) || 0;
+                    const surchargePercent = parseFloat(item.querySelector('.surcharge-percent-input').value) || 0;
+
+                    if (surchargeAmount > 0) {
+                        surchargeForThisPayment = surchargeAmount;
+                    } else if (surchargePercent > 0) {
+                        surchargeForThisPayment = baseAmount * (surchargePercent / 100);
+                    }
+
+                    totalSurcharges += surchargeForThisPayment;
+                    const totalTransactionAmount = baseAmount + surchargeForThisPayment;
+                    totalPaid += totalTransactionAmount;
+                    const paymentMethod = item.querySelector('.payment-method-selector').value;
+                    paymentSummaryHTML += `<div class="flex justify-between text-sm text-gray-300"><span>Pago (${paymentMethod}):</span><span class="text-green-400">$${totalTransactionAmount.toLocaleString('es-AR')}</span></div>`;
+                });
+                
+                const finalComandaTotal = totalAfterDiscount + totalSurcharges;
+                const remaining = finalComandaTotal - totalPaid;
+
+                let summaryHTML = `<div class="flex justify-between text-sm text-gray-300"><span>Subtotal:</span><span>$${subtotal.toLocaleString('es-AR')}</span></div>`;
+                if (discountAmount > 0) {
+                    summaryHTML += `<div class="flex justify-between text-sm text-orange-400"><span>Descuento:</span><span>- $${discountAmount.toLocaleString('es-AR')}</span></div>`;
+                }
+                if (totalSurcharges > 0) {
+                    summaryHTML += `<div class="flex justify-between text-sm text-yellow-400"><span>Recargos:</span><span>+ $${totalSurcharges.toLocaleString('es-AR')}</span></div>`;
+                }
+                summaryHTML += `<hr class="border-gray-700 my-1"><div class="flex justify-between text-lg"><span class="font-medium">Total:</span><span class="font-semibold">$${finalComandaTotal.toLocaleString('es-AR')}</span></div>`;
+                
+                document.getElementById('summary-list').innerHTML = summaryHTML;
+                document.getElementById('payment-summary-list').innerHTML = paymentSummaryHTML;
+                const remainingEl = document.getElementById('comanda-remaining');
+                remainingEl.textContent = `$${remaining.toLocaleString('es-AR')}`;
+                remainingEl.className = `font-bold ${remaining <= 0.01 ? 'text-green-400' : 'text-yellow-400'}`;
+            }
+
+            function resetComandaModal() {
+                comandaIdInput.value = '';
+                document.getElementById('comanda-original-fecha').value = '';
+                document.getElementById('comanda-original-hora').value = '';
+                document.getElementById('comanda-numero').value = '';
+                document.getElementById('comanda-cliente').value = '';
+                document.getElementById('items-list').innerHTML = '';
+                document.getElementById('payments-list').innerHTML = '';
+                discountContainer.innerHTML = '';
+                discountContainer.classList.add('hidden');
+                addDiscountBtn.classList.remove('hidden');
+                calculateComandaTotals();
+            }
+
+            saveComandaBtn.addEventListener('click', async () => {
+                const id = comandaIdInput.value;
+                const comandaNumero = document.getElementById('comanda-numero').value;
+                const cliente = document.getElementById('comanda-cliente').value;
+
+                if (!comandaNumero || !cliente) {
+                    showToast('El Nº de Comanda y el Cliente son obligatorios.', true);
+                    return;
+                }
+                
+                let subtotal = 0;
+                document.querySelectorAll('#items-list .item-entry').forEach(item => {
+                    subtotal += parseFloat(item.querySelector('.price-input').value) || 0;
+                });
+
+                let discount = null;
+                let discountAmount = 0;
+                const discountItem = document.querySelector('#discount-container .discount-item');
+                if (discountItem) {
+                    const type = discountItem.querySelector('.discount-type-selector').value;
+                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
+                    if (value > 0) {
+                        discount = { type, value };
+                        if (type === 'percentage') {
+                            discountAmount = subtotal * (value / 100);
+                        } else {
+                            discountAmount = value;
+                        }
+                    }
+                }
+                const totalAfterDiscount = subtotal - discountAmount;
+                
+                let totalPaid = 0, totalSurcharges = 0;
+                document.querySelectorAll('#payments-list .payment-item').forEach(item => {
+                    const baseAmount = parseFloat(item.querySelector('.payment-amount-input').value) || 0;
+                    let surchargeForThisPayment = 0;
+                    const surchargeAmount = parseFloat(item.querySelector('.surcharge-amount-input').value) || 0;
+                    const surchargePercent = parseFloat(item.querySelector('.surcharge-percent-input').value) || 0;
+                    if (surchargeAmount > 0) {
+                        surchargeForThisPayment = surchargeAmount;
+                    } else if (surchargePercent > 0) {
+                        surchargeForThisPayment = baseAmount * (surchargePercent / 100);
+                    }
+                    totalSurcharges += surchargeForThisPayment;
+                    totalPaid += baseAmount + surchargeForThisPayment;
+                });
+
+                const finalComandaTotal = totalAfterDiscount + totalSurcharges;
+                const remaining = finalComandaTotal - totalPaid;
+
+                if (remaining > 0.01) {
+                    showToast('La comanda debe estar saldada para poder guardarla.', true);
+                    return;
+                }
+
+                const items = Array.from(document.querySelectorAll('#items-list .item-entry')).map(itemEl => {
+                    const type = itemEl.dataset.type;
+                    const profesionalId = itemEl.querySelector('.item-profesional-selector')?.value;
+                    const profesional = profesionalesCache.find(p => p.id === profesionalId);
+                    const precio = parseFloat(itemEl.querySelector('.price-input').value) || 0;
+                    
+                    let itemData = {
+                        type: type,
+                        profesionalId: profesionalId || null,
+                        profesionalNombre: profesional?.nombre ?? null,
+                        precio: precio
+                    };
+
+                    if (type === 'servicio') {
+                        const servicioId = itemEl.querySelector('.item-service-id').value;
+                        const servicio = serviciosCache.find(s => s.id === servicioId);
+                        itemData.servicioId = servicioId;
+                        itemData.servicioNombre = servicio?.nombre ?? 'Desconocido';
+                        itemData.isVoucher = itemEl.querySelector('.item-voucher-check').checked;
+                    } else {
+                        itemData.servicioNombre = itemEl.querySelector('.item-name-input').value;
+                        if (type === 'producto') {
+                            itemData.categoria = 'P';
+                        }
+                    }
+                    return itemData;
+                });
+
+                if (items.length === 0) {
+                    showToast('La comanda debe tener al menos un concepto.', true);
+                    return;
+                }
+
+                const pagos = Array.from(document.querySelectorAll('#payments-list .payment-item')).map(itemEl => {
+                    const baseAmount = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
+                    let surcharge = 0;
+                    const surchargeAmount = parseFloat(itemEl.querySelector('.surcharge-amount-input').value) || 0;
+                    const surchargePercent = parseFloat(itemEl.querySelector('.surcharge-percent-input').value) || 0;
+                    if (surchargeAmount > 0) {
+                        surcharge = surchargeAmount;
+                    } else if (surchargePercent > 0) {
+                        surcharge = baseAmount * (surchargePercent / 100);
+                    }
+                    return { metodo: itemEl.querySelector('.payment-method-selector').value, monto: baseAmount, recargo: surcharge };
+                });
+                
+                const comandaData = {
+                    numero: comandaNumero, cliente, items, pagos, discount, total: finalComandaTotal
+                };
+
+                try {
+                    if (id) {
+                        comandaData.fecha = document.getElementById('comanda-original-fecha').value;
+                        comandaData.hora = document.getElementById('comanda-original-hora').value;
+                        const comandaRef = doc(db, `artifacts/${appId}/public/data/comandas`, id);
+                        await updateDoc(comandaRef, comandaData);
+                        
+                        const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("comandaId", "==", id));
+                        const querySnapshot = await getDocs(q);
+                        if (!querySnapshot.empty) {
+                            const movimientoDoc = querySnapshot.docs[0];
+                            const movimientoRef = doc(db, `artifacts/${appId}/public/data/movimientos`, movimientoDoc.id);
+                            await updateDoc(movimientoRef, {
+                                concept: `Comanda #${comandaNumero || 'N/A'}`,
+                                amount: finalComandaTotal,
+                            });
+                        }
+                        showToast('Comanda actualizada con éxito.');
+
+                    } else {
+                        const now = new Date();
+                        comandaData.fecha = now.toISOString().slice(0, 10);
+                        comandaData.hora = now.toTimeString().slice(0, 5);
+                        comandaData.createdAt = serverTimestamp();
+                        
+                        const comandaRef = await addDoc(collection(db, `artifacts/${appId}/public/data/comandas`), comandaData);
+                        const newMovimiento = { type: 'ingreso', concept: `Comanda #${comandaNumero || 'N/A'}`, amount: finalComandaTotal, comandaId: comandaRef.id, date: comandaData.fecha, time: comandaData.hora, createdAt: serverTimestamp() };
+                        await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newMovimiento);
+                        showToast('Comanda guardada con éxito.');
+                    }
+                    resetComandaModal();
+                    closeModal(comandaModal);
+                    const todayString = new Date().toISOString().slice(0, 10);
+                    fetchDetailsForDate(todayString);
+                } catch (error) {
+                    log(`Error guardando comanda: ${error.message}`);
+                    showToast('Error al guardar la comanda.', true);
+                }
+            });
+
+            saveCajaBtn.addEventListener('click', async () => {
+                const monto = parseFloat(cajaInicialInput.value);
+                if(isNaN(monto) || monto < 0) { showToast("Ingresa un monto válido.", true); return; }
+                const now = new Date();
+                const newApertura = { type: 'apertura', concept: 'Apertura de Caja', amount: monto, date: now.toISOString().slice(0, 10), time: now.toTimeString().slice(0, 5), createdAt: serverTimestamp() };
+                try {
+                    if(aperturaCajaDocId) await updateDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, aperturaCajaDocId), { amount: monto });
+                    else await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newApertura);
+                    showToast(aperturaCajaDocId ? 'Monto de caja actualizado.' : 'Caja iniciada con éxito.');
+                    closeModal(cajaModal);
+                } catch (error) {
+                    log(`[ERROR] al guardar apertura de caja: ${error.message}`);
+                    showToast('Error al guardar el monto de apertura.', true);
+                }
+            });
+
+            async function populateComandaModalForEdit(comandaId) {
+                try {
+                    const comandaRef = doc(db, `artifacts/${appId}/public/data/comandas`, comandaId);
+                    const comandaSnap = await getDoc(comandaRef);
+                    if (!comandaSnap.exists()) {
+                        showToast("La comanda no existe.", true);
+                        return;
+                    }
+                    const comanda = comandaSnap.data();
+                    resetComandaModal();
+                    comandaIdInput.value = comandaId;
+                    document.getElementById('comanda-original-fecha').value = comanda.fecha;
+                    document.getElementById('comanda-original-hora').value = comanda.hora;
+                    document.getElementById('comanda-numero').value = comanda.numero || '';
+                    document.getElementById('comanda-cliente').value = comanda.cliente || '';
+                    const itemsList = document.getElementById('items-list');
+                    (comanda.items || []).forEach(item => {
+                        if (item.type === 'servicio') itemsList.insertAdjacentHTML('beforeend', servicioTemplate(item));
+                        else if (item.type === 'producto') itemsList.insertAdjacentHTML('beforeend', productoTemplate(item));
+                        else itemsList.insertAdjacentHTML('beforeend', otroTemplate(item));
+                    });
+                    const paymentsList = document.getElementById('payments-list');
+                    (comanda.pagos || []).forEach(pago => paymentsList.insertAdjacentHTML('beforeend', paymentTemplate(pago)));
+                    
+                    if (comanda.discount && comanda.discount.value > 0) {
+                        discountContainer.innerHTML = discountTemplate(comanda.discount);
+                        discountContainer.classList.remove('hidden');
+                        addDiscountBtn.classList.add('hidden');
+                    }
+
+                    calculateComandaTotals();
+                    comandaModalTitle.textContent = `Editando Comanda #${comanda.numero || ''}`;
+                    saveComandaBtn.textContent = "Guardar Cambios";
+                    deleteComandaFromEditBtn.classList.remove('hidden');
+                    saveComandaBtn.classList.remove('col-span-2');
+                    closeModal(comandaDetailModal);
+                    openModal(comandaModal);
+                } catch (error) {
+                    log(`Error al cargar comanda para editar: ${error.message}`);
+                    showToast("No se pudo cargar la comanda para editar.", true);
+                }
+            }
+
+            async function deleteComandaAndMovement(comandaId) {
+                if (!comandaId) {
+                    log("ID de comanda inválido para eliminar.");
+                    return;
+                }
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("comandaId", "==", comandaId));
+                    const querySnapshot = await getDocs(q);
+                    const deletePromises = [];
+                    querySnapshot.forEach((doc) => {
+                        deletePromises.push(deleteDoc(doc.ref));
+                        log(`Movimiento asociado ${doc.id} marcado para eliminar.`);
+                    });
+                    
+                    deletePromises.push(deleteDoc(doc(db, `artifacts/${appId}/public/data/comandas`, comandaId)));
+                    
+                    await Promise.all(deletePromises);
+
+                    log(`Comanda ${comandaId} y sus movimientos asociados eliminados.`);
+                    await fetchAllInitialDataForReports();
+                    showToast('Comanda eliminada correctamente.');
+
+                } catch (error) {
+                    log(`[ERROR] al eliminar comanda ${comandaId}: ${error.message}`);
+                    showToast('No se pudo eliminar la comanda.', true);
+                }
+            }
+            
+            editComandaBtn.addEventListener('click', () => {
+                const comandaId = document.getElementById('detail-comanda-id').value;
+                if (comandaId) populateComandaModalForEdit(comandaId);
+            });
+
+            deleteComandaBtn.addEventListener('click', async () => {
+                const comandaId = document.getElementById('detail-comanda-id').value;
+                await deleteComandaAndMovement(comandaId);
+                closeModal(comandaDetailModal);
+            });
+
+            deleteComandaFromEditBtn.addEventListener('click', async () => {
+                const comandaId = comandaIdInput.value;
+                await deleteComandaAndMovement(comandaId);
+                closeModal(comandaModal);
+            });
+
+            editGastoBtn.addEventListener('click', () => showToast('La edición de gastos aún no está implementada.', true));
+            deleteGastoBtn.addEventListener('click', async () => {
+                const gastoId = document.getElementById('detail-gasto-id').value;
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, gastoId));
+                    closeModal(gastoDetailModal);
+                    await fetchAllInitialDataForReports();
+                    showToast('Gasto eliminado correctamente.');
+                } catch (error) {
+                    log(`[ERROR] al eliminar gasto: ${error.message}`);
+                    showToast('No se pudo eliminar el gasto.', true);
+                }
+            });
+
+            // --- Lógica del Modal de Edición de Presets ---
+            const presetTypeNames = {
+                servicios: 'Servicio',
+                profesionales: 'Profesional',
+                mediosDePago: 'Medio de Pago',
+                categoriasGasto: 'Categoría de Gasto',
+                mediosDePagoAdmin: 'Medio de Pago (Admin)'
+            };
+
+            ajustesContent.addEventListener('click', e => {
+                const editBtn = e.target.closest('.edit-preset-btn');
+                const addBtn = e.target.closest('.add-preset-btn');
+                if (editBtn) {
+                    const { type, id } = editBtn.dataset;
+                    openPresetEditModal(type, id);
+                }
+                if (addBtn) {
+                    const { type } = addBtn.dataset;
+                    openPresetEditModal(type);
+                }
+            });
+
+            async function openPresetEditModal(type, id) {
+                currentEditingPreset = { type, id };
+                const isNew = !id;
+                presetModalTitle.textContent = `${isNew ? 'Nuevo' : 'Editar'} ${presetTypeNames[type]}`;
+                presetModalBody.innerHTML = '<p class="text-gray-500">Cargando...</p>';
+                deletePresetBtn.classList.toggle('hidden', isNew);
+                
+                let data = {};
+                if (!isNew) {
+                    const docRef = doc(db, `artifacts/${appId}/public/data/${type}`, id);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) data = docSnap.data();
+                }
+
+                let fieldsHtml = `<div><label class="text-sm font-medium text-gray-400">Nombre</label><input type="text" id="preset-field-nombre" value="${data.nombre || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1" required></div>`;
+                
+                if (type === 'servicios') {
+                    fieldsHtml += `<div><label class="text-sm font-medium text-gray-400">Precio</label><input type="number" id="preset-field-precio" value="${data.precio || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>`;
+                    const categories = ['P', 'S', 'T', 'V'];
+                    const options = categories.map(c => `<option value="${c}" ${data.categoria === c ? 'selected' : ''}>${c}</option>`).join('');
+                    fieldsHtml += `<div><label class="text-sm font-medium text-gray-400">Categoría de Comisión</label><select id="preset-field-categoria" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1">${options}</select></div>`;
+                }
+                 if (type === 'profesionales') {
+                    fieldsHtml += `<div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-sm font-medium text-gray-400">Comisión P (%)</label><input type="number" id="preset-field-comision-P" value="${data.comisiones?.P || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                        <div><label class="text-sm font-medium text-gray-400">Comisión S (%)</label><input type="number" id="preset-field-comision-S" value="${data.comisiones?.S || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                        <div><label class="text-sm font-medium text-gray-400">Comisión T (%)</label><input type="number" id="preset-field-comision-T" value="${data.comisiones?.T || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                        <div><label class="text-sm font-medium text-gray-400">Comisión V (%)</label><input type="number" id="preset-field-comision-V" value="${data.comisiones?.V || ''}" class="w-full bg-gray-800 rounded-lg px-3 py-2 mt-1"></div>
+                    </div>`;
+                }
+                if (type === 'mediosDePago') {
+                    fieldsHtml += `<div class="flex items-center"><input type="checkbox" id="preset-field-esDigital" ${data.esDigital ? 'checked' : ''} class="h-4 w-4 rounded bg-gray-700 border-gray-600"><label for="preset-field-esDigital" class="ml-2 text-sm">Es Digital</label></div>`;
+                }
+                if (type === 'categoriasGasto') {
+                    fieldsHtml += `<div class="flex items-center"><input type="checkbox" id="preset-field-visibleParaCajero" ${data.visibleParaCajero ? 'checked' : ''} class="h-4 w-4 rounded bg-gray-700 border-gray-600"><label for="preset-field-visibleParaCajero" class="ml-2 text-sm">Visible para Cajero (Gasto Operativo)</label></div>`;
+                }
+                
+                presetModalBody.innerHTML = fieldsHtml;
+                openModal(presetEditModal);
+            }
+
+            savePresetBtn.addEventListener('click', async () => {
+                const { type, id } = currentEditingPreset;
+                const isNew = !id;
+                const nombreInput = document.getElementById('preset-field-nombre');
+                if (!nombreInput || !nombreInput.value) {
+                    showToast('El nombre es obligatorio.', true);
+                    return;
+                }
+
+                const dataToSave = { nombre: nombreInput.value };
+
+                if (type === 'servicios') {
+                    dataToSave.precio = parseFloat(document.getElementById('preset-field-precio').value) || 0;
+                    dataToSave.categoria = document.getElementById('preset-field-categoria').value;
+                }
+                if (type === 'profesionales') {
+                    dataToSave.comisiones = {
+                        P: parseFloat(document.getElementById('preset-field-comision-P').value) || 0,
+                        S: parseFloat(document.getElementById('preset-field-comision-S').value) || 0,
+                        T: parseFloat(document.getElementById('preset-field-comision-T').value) || 0,
+                        V: parseFloat(document.getElementById('preset-field-comision-V').value) || 0,
+                    };
+                }
+                if (type === 'mediosDePago') dataToSave.esDigital = document.getElementById('preset-field-esDigital').checked;
+                if (type === 'categoriasGasto') dataToSave.visibleParaCajero = document.getElementById('preset-field-visibleParaCajero').checked;
+
+                try {
+                    if (isNew) {
+                        await addDoc(collection(db, `artifacts/${appId}/public/data/${type}`), dataToSave);
+                        showToast('Elemento creado con éxito.');
+                    } else {
+                        await updateDoc(doc(db, `artifacts/${appId}/public/data/${type}`, id), dataToSave);
+                        showToast('Elemento actualizado con éxito.');
+                    }
+                    closeModal(presetEditModal);
+                    await loadAllPresets();
+                } catch (error) {
+                    log(`[ERROR] al guardar preset: ${error.message}`);
+                    showToast('No se pudo guardar el elemento.', true);
+                }
+            });
+
+            deletePresetBtn.addEventListener('click', async () => {
+                const { type, id } = currentEditingPreset;
+                if (!id) return;
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/${type}`, id));
+                    showToast('Elemento eliminado con éxito.');
+                    closeModal(presetEditModal);
+                    await loadAllPresets();
+                } catch (error) {
+                    log(`[ERROR] al eliminar preset: ${error.message}`);
+                    showToast('No se pudo eliminar el elemento.', true);
+                }
+            });
+
+            // --- Lógica de Reportes (Comisiones y Finanzas) ---
+            function switchReportView(activeView) {
+                const views = {
+                    movimientos: { btn: reportMovimientosBtn, content: movimientosView },
+                    comisiones: { btn: reportComisionesBtn, content: comisionesView },
+                    finanzas: { btn: reportFinanzasBtn, content: finanzasView }
+                };
+
+                for (const view of Object.values(views)) {
+                    view.content.classList.add('hidden');
+                    view.btn.classList.remove('bg-gray-700', 'text-white');
+                    view.btn.classList.add('text-gray-400', 'hover:bg-gray-800');
+                }
+
+                views[activeView].content.classList.remove('hidden');
+                views[activeView].btn.classList.add('bg-gray-700', 'text-white');
+                views[activeView].btn.classList.remove('text-gray-400', 'hover:bg-gray-800');
+            }
+
+            reportMovimientosBtn.addEventListener('click', () => switchReportView('movimientos'));
+            reportComisionesBtn.addEventListener('click', () => switchReportView('comisiones'));
+            reportFinanzasBtn.addEventListener('click', () => switchReportView('finanzas'));
+            
+            generarReporteComisionBtn.addEventListener('click', async () => {
+                const fechaInicio = document.getElementById('comision-fecha-inicio').value;
+                const fechaFin = document.getElementById('comision-fecha-fin').value;
+                const profesionalId = comisionProfesionalSelect.value;
+
+                if (!fechaInicio || !fechaFin || !profesionalId) {
+                    showToast('Por favor, complete todos los campos.', true);
+                    return;
+                }
+                
+                const profesionalSeleccionado = profesionalesCache.find(p => p.id === profesionalId);
+                if (!profesionalSeleccionado) {
+                    showToast('Profesional no encontrado.', true); return;
+                }
+
+                comisionTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
+                comisionReporteContainer.classList.remove('hidden');
+
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const comandasSnapshot = await getDocs(q);
+                    
+                    let reportData = [];
+                    let totalFacturado = 0;
+                    let totalComision = 0;
+
+                    comandasSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        (comanda.items || []).forEach(item => {
+                            if (item.profesionalId === profesionalId) {
+                                let categoriaComision;
+                                if(item.type === 'servicio'){
+                                    categoriaComision = item.isVoucher ? 'V' : serviciosCache.find(s => s.id === item.servicioId)?.categoria;
+                                } else if(item.type === 'producto'){
+                                    categoriaComision = 'P';
+                                }
+
+                                if(categoriaComision){
+                                    const porcentaje = profesionalSeleccionado.comisiones?.[categoriaComision] || 0;
+                                    const facturado = item.precio;
+                                    const comision = facturado * (porcentaje / 100);
+
+                                    totalFacturado += facturado;
+                                    totalComision += comision;
+
+                                    reportData.push({ numero: comanda.numero, fecha: comanda.fecha, servicioNombre: item.servicioNombre, isVoucher: item.isVoucher, porcentaje, facturado, comision });
+                                }
+                            }
+                        });
+                    });
+
+                    reportData.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
+
+                    if (reportData.length === 0) {
+                        comisionTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">No se encontraron datos.</td></tr>`;
+                        comisionTotalFacturado.textContent = '$0';
+                        comisionTotalComision.textContent = '$0';
+                        return;
+                    }
+
+                    comisionTableBody.innerHTML = reportData.map(row => `<tr><td class="p-2 border-t border-gray-700">${row.numero}</td><td class="p-2 border-t border-gray-700">${row.fecha}</td><td class="p-2 border-t border-gray-700">${row.servicioNombre}</td><td class="p-2 border-t border-gray-700">${row.isVoucher ? 'Voucher' : ''}</td><td class="p-2 border-t border-gray-700">${row.porcentaje}%</td><td class="p-2 border-t border-gray-700 text-right">$${row.facturado.toLocaleString('es-AR')}</td><td class="p-2 border-t border-gray-700 text-right text-green-400">$${row.comision.toLocaleString('es-AR')}</td></tr>`).join('');
+
+                    comisionTotalFacturado.textContent = `$${totalFacturado.toLocaleString('es-AR')}`;
+                    comisionTotalComision.textContent = `$${totalComision.toLocaleString('es-AR')}`;
+
+                } catch (error) {
+                    log(`Error generando reporte de comisiones: ${error.message}`);
+                    showToast('No se pudo generar el reporte.', true);
+                    comisionTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            });
+
+            exportarPdfComisionBtn.addEventListener('click', () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                const profesionalSeleccionado = profesionalesCache.find(p => p.id === comisionProfesionalSelect.value);
+                const fechaInicio = document.getElementById('comision-fecha-inicio').value;
+                const fechaFin = document.getElementById('comision-fecha-fin').value;
+
+                doc.text(`Reporte de Comisiones para ${profesionalSeleccionado?.nombre || 'N/A'}`, 14, 15);
+                doc.setFontSize(10);
+                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
+
+                doc.autoTable({
+                    html: '#comision-report-table',
+                    startY: 25,
+                    theme: 'grid',
+                    headStyles: { fillColor: [31, 41, 55] },
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                });
+
+                doc.save(`comisiones_${profesionalSeleccionado?.nombre}_${fechaInicio}_${fechaFin}.pdf`);
+            });
+
+            generarReporteFinanzasBtn.addEventListener('click', async () => {
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                const tipoReporte = document.getElementById('finanzas-reporte-select').value;
+                
+                if (!fechaInicio || !fechaFin) {
+                    showToast('Por favor, seleccione un rango de fechas.', true);
+                    return;
+                }
+
+                finanzasReporteContainer.classList.remove('hidden');
+                finanzasTableHead.innerHTML = '';
+                finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
+                finanzasTableFoot.innerHTML = '';
+
+                switch (tipoReporte) {
+                    case 'detalleComandas':
+                        await generarReporteDetalleComandas(fechaInicio, fechaFin);
+                        break;
+                    default:
+                        showToast('Este reporte aún no está disponible.');
+                        finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
+                        break;
+                }
+            });
+
+            async function generarReporteDetalleComandas(fechaInicio, fechaFin) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const comandasSnapshot = await getDocs(q);
+                    
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº Com.</th><th class="p-2">Fecha</th><th class="p-2">Cliente</th>
+                        <th class="p-2">Conceptos</th><th class="p-2">Pagos</th><th class="p-2">Descuento</th><th class="p-2 text-right">Total</th>
+                    </tr>`;
+
+                    if (comandasSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">No se encontraron comandas.</td></tr>`;
+                        return;
+                    }
+
+                    let totalGeneral = 0;
+                    const comandasData = comandasSnapshot.docs.map(doc => doc.data()).sort((a,b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
+
+                    finanzasTableBody.innerHTML = comandasData.map(comanda => {
+                        totalGeneral += comanda.total || 0;
+                        const conceptosHTML = (comanda.items || []).map(i => `${i.servicioNombre} ($${(i.precio || 0).toLocaleString('es-AR')})`).join('<br>');
+                        const pagosHTML = (comanda.pagos || []).map(p => `${p.metodo} ($${(p.monto || 0).toLocaleString('es-AR')})`).join('<br>');
+                        let descuentoHTML = '-';
+                        if (comanda.discount) {
+                            descuentoHTML = comanda.discount.type === 'percentage' ? `${comanda.discount.value}%` : `$${(comanda.discount.value || 0).toLocaleString('es-AR')}`;
+                        }
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${comanda.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.cliente}</td>
+                            <td class="p-2 border-t border-gray-700">${conceptosHTML}</td>
+                            <td class="p-2 border-t border-gray-700">${pagosHTML}</td>
+                            <td class="p-2 border-t border-gray-700">${descuentoHTML}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${(comanda.total || 0).toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td colspan="6" class="p-2 font-bold">TOTAL GENERAL</td>
+                        <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte detalle de comandas: ${error.message}`);
+                    showToast('No se pudo generar el reporte.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
+            
+            exportarPdfFinanzasBtn.addEventListener('click', () => {
+                const tipoReporte = document.getElementById('finanzas-reporte-select').value;
+                if (tipoReporte !== 'detalleComandas') {
+                    showToast('Función de exportar no disponible para este reporte aún.');
+                    return;
+                }
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+
+                doc.text(`Reporte: Detalle de Comandas`, 14, 15);
+                doc.setFontSize(10);
+                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
+
+                doc.autoTable({
+                    html: '#finanzas-report-table',
+                    startY: 25,
+                    theme: 'grid',
+                    headStyles: { fillColor: [31, 41, 55] },
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                });
+                doc.save(`reporte_detalle_comandas_${fechaInicio}_${fechaFin}.pdf`);
+            });
+
+            exportarXlsxFinanzasBtn.addEventListener('click', () => {
+                const tipoReporte = document.getElementById('finanzas-reporte-select').value;
+                if (tipoReporte !== 'detalleComandas') {
+                    showToast('Función de exportar no disponible para este reporte aún.');
+                    return;
+                }
+                const table = document.getElementById('finanzas-report-table');
+                const wb = XLSX.utils.table_to_book(table, { sheet: "Detalle Comandas" });
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                XLSX.writeFile(wb, `reporte_detalle_comandas_${fechaInicio}_${fechaFin}.xlsx`);
+            });
+
+            retirarDineroBtn.addEventListener('click', async () => {
+                const today = new Date().toISOString().slice(0, 10);
+                const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("date", "==", today), where("type", "==", "retiro"));
+                const querySnapshot = await getDocs(q);
+                const retiros = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                if (retiros.length > 0) {
+                    retirosList.innerHTML = retiros.map(r => `<div class="flex justify-between items-center bg-gray-700 p-2 rounded-md"><span>$${r.amount.toLocaleString('es-AR')}</span><button class="delete-retiro-btn text-red-400 hover:text-red-600" data-id="${r.id}">Eliminar</button></div>`).join('');
+                } else {
+                    retirosList.innerHTML = '<p class="text-gray-500">No hay retiros registrados hoy.</p>';
+                }
+
+                openModal(retiroModal);
+            });
+
+            closeRetiroModalBtn.addEventListener('click', () => closeModal(retiroModal));
+
+            retiroForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const monto = parseFloat(retiroMontoInput.value);
+                if (isNaN(monto) || monto <= 0) { showToast('Ingrese un monto válido.', true); return; }
+                const now = new Date();
+                const newRetiro = { type: 'retiro', concept: 'Retiro de Caja', amount: monto, date: now.toISOString().slice(0, 10), time: now.toTimeString().slice(0, 5), createdAt: serverTimestamp() };
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newRetiro);
+                    showToast('Retiro guardado correctamente.');
+                    retiroMontoInput.value = '';
+                    retirarDineroBtn.click();
+                } catch(error) {
+                    log(`Error al guardar retiro: ${error.message}`);
+                    showToast('No se pudo guardar el retiro.', true);
+                }
+            });
+
+            retirosList.addEventListener('click', async (e) => {
+                if (e.target.classList.contains('delete-retiro-btn')) {
+                    const retiroId = e.target.dataset.id;
+                    try {
+                        await deleteDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, retiroId));
+                        showToast('Retiro eliminado.');
+                        retirarDineroBtn.click();
+                    } catch (error) {
+                        log(`Error al eliminar retiro: ${error.message}`);
+                        showToast('No se pudo eliminar el retiro.', true);
+                    }
+                }
+            });
+
+        });
+    </script>
+</body>
+</html>
+
