@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.5</title>
+    <title>Hugo Amadey Admin App v0.9.6</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -204,7 +204,7 @@
                                 <option value="detalleComandas">Detalle comandas</option>
                                 <option value="ventas">Ventas</option>
                                 <option value="gastos">Gastos</option>
-                                <option value="pagos" disabled>Pagos (próximamente)</option>
+                                <option value="pagos">Pagos</option>
                                 <option value="resumenFinanciero" disabled>Resumen Financiero (próximamente)</option>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
@@ -1875,6 +1875,9 @@
                     case 'gastos':
                         await generarReporteGastos(fechaInicio, fechaFin);
                         break;
+                    case 'pagos':
+                        await generarReportePagos(fechaInicio, fechaFin);
+                        break;
                     default:
                         showToast('Este reporte aún no está disponible.');
                         finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
@@ -2070,12 +2073,78 @@
                 }
             }
 
+            async function generarReportePagos(fechaInicio, fechaFin) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`),
+                        where("fecha", ">=", fechaInicio),
+                        where("fecha", "<=", fechaFin)
+                    );
+                    const comandasSnapshot = await getDocs(q);
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº Com.</th>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Medio de Pago</th>
+                        <th class="p-2 text-right">Importe</th>
+                        <th class="p-2 text-right">Recargo</th>
+                    </tr>`;
+                    
+                    if (comandasSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
+                        finanzasTableFoot.innerHTML = '';
+                        return;
+                    }
+                    
+                    let reportData = [];
+                    comandasSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        (comanda.pagos || []).forEach(pago => {
+                            reportData.push({
+                                numero: comanda.numero,
+                                fecha: comanda.fecha,
+                                metodo: pago.metodo,
+                                importe: pago.monto || 0,
+                                recargo: pago.recargo || 0
+                            });
+                        });
+                    });
+                    
+                    reportData.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
+
+                    let totalImporte = 0;
+                    let totalRecargo = 0;
+                    finanzasTableBody.innerHTML = reportData.map(row => {
+                        totalImporte += row.importe;
+                        totalRecargo += row.recargo;
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${row.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${row.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${row.metodo}</td>
+                            <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td colspan="3" class="p-2 font-bold">TOTALES</td>
+                        <td class="p-2 text-right font-bold">$${totalImporte.toLocaleString('es-AR')}</td>
+                        <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte de pagos: ${error.message}`);
+                    showToast('No se pudo generar el reporte de pagos.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
+
+
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
 
-                if (!['detalleComandas', 'ventas', 'gastos'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2102,7 +2171,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['detalleComandas', 'ventas', 'gastos'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
