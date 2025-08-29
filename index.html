@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.9</title>
+    <title>Hugo Amadey Admin App v1.0.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -2225,28 +2225,20 @@
                 }
             }
 
-
-            exportarPdfFinanzasBtn.addEventListener('click', () => {
-                const select = document.getElementById('finanzas-reporte-select');
-                const tipoReporte = select.value;
-                const reportName = select.options[select.selectedIndex].text;
-
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
-                    showToast('Función de exportar no disponible para este reporte aún.');
-                    return;
-                }
+            // --- Lógica de Exportación ---
+            function exportToPdf(tableId, reportName, orientation = 'p') {
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
+                const doc = new jsPDF(orientation, 'pt', 'a4');
                 const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
                 const fechaFin = document.getElementById('finanzas-fecha-fin').value;
 
-                doc.text(`Reporte: ${reportName}`, 14, 15);
+                doc.text(`Reporte: ${reportName}`, 40, 40);
                 doc.setFontSize(10);
-                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
+                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 40, 55);
 
                 doc.autoTable({
-                    html: '#finanzas-report-table',
-                    startY: 25,
+                    html: `#${tableId}`,
+                    startY: 65,
                     theme: 'grid',
                     headStyles: { fillColor: [31, 41, 55] },
                     footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -2257,22 +2249,37 @@
                         }
                     }
                 });
-                doc.save(`reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.pdf`);
+                doc.save(`reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.pdf`);
+            }
+            
+            function exportToXlsx(tableId, reportName) {
+                const table = document.getElementById(tableId);
+                const wb = XLSX.utils.table_to_book(table, { sheet: reportName });
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                XLSX.writeFile(wb, `reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.xlsx`);
+            }
+
+            exportarPdfFinanzasBtn.addEventListener('click', () => {
+                const select = document.getElementById('finanzas-reporte-select');
+                const tipoReporte = select.value;
+                const reportName = select.options[select.selectedIndex].text;
+                 if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
+                    showToast('Función de exportar no disponible para este reporte aún.');
+                    return;
+                }
+                exportToPdf('finanzas-report-table', reportName);
             });
 
             exportarXlsxFinanzasBtn.addEventListener('click', () => {
-                const select = document.getElementById('finanzas-reporte-select');
+                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
                 if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
-                const table = document.getElementById('finanzas-report-table');
-                const wb = XLSX.utils.table_to_book(table, { sheet: reportName });
-                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
-                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
-                XLSX.writeFile(wb, `reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.xlsx`);
+                exportToXlsx('finanzas-report-table', reportName);
             });
 
             retirarDineroBtn.addEventListener('click', async () => {
