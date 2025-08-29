@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.3</title>
+    <title>Hugo Amadey Admin App v0.9.4</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -203,7 +203,7 @@
                             <select id="finanzas-reporte-select" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
                                 <option value="detalleComandas">Detalle comandas</option>
                                 <option value="ventas">Ventas</option>
-                                <option value="gastos" disabled>Gastos (próximamente)</option>
+                                <option value="gastos">Gastos</option>
                                 <option value="pagos" disabled>Pagos (próximamente)</option>
                                 <option value="resumenFinanciero" disabled>Resumen Financiero (próximamente)</option>
                             </select>
@@ -1872,6 +1872,9 @@
                     case 'ventas':
                         await generarReporteVentas(fechaInicio, fechaFin);
                         break;
+                    case 'gastos':
+                        await generarReporteGastos(fechaInicio, fechaFin);
+                        break;
                     default:
                         showToast('Este reporte aún no está disponible.');
                         finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
@@ -2014,12 +2017,63 @@
                 }
             }
             
+            async function generarReporteGastos(fechaInicio, fechaFin) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), 
+                        where("type", "==", "gasto"),
+                        where("date", ">=", fechaInicio), 
+                        where("date", "<=", fechaFin)
+                    );
+                    const gastosSnapshot = await getDocs(q);
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Operación</th>
+                        <th class="p-2">Categoría</th>
+                        <th class="p-2">Medio de Pago</th>
+                        <th class="p-2 text-right">Importe</th>
+                    </tr>`;
+
+                    if (gastosSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No se encontraron gastos.</td></tr>`;
+                        finanzasTableFoot.innerHTML = '';
+                        return;
+                    }
+
+                    const gastosData = gastosSnapshot.docs.map(doc => doc.data()).sort((a,b) => a.date.localeCompare(b.date));
+                    const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+                    
+                    let totalGeneral = 0;
+                    finanzasTableBody.innerHTML = gastosData.map(gasto => {
+                        totalGeneral += gasto.amount || 0;
+                        const tipoOperacion = categoriasOperativas.includes(gasto.categoria) ? 'Operativo' : 'Administrativo';
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${gasto.date}</td>
+                            <td class="p-2 border-t border-gray-700">${tipoOperacion}</td>
+                            <td class="p-2 border-t border-gray-700">${gasto.categoria}</td>
+                            <td class="p-2 border-t border-gray-700">${gasto.paymentMethod}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold text-red-400">$${(gasto.amount || 0).toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td colspan="4" class="p-2 font-bold">TOTAL GASTOS</td>
+                        <td class="p-2 text-right font-bold text-red-400">$${totalGeneral.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte de gastos: ${error.message}`);
+                    showToast('No se pudo generar el reporte de gastos.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
+
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
 
-                if (!['detalleComandas', 'ventas'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2046,7 +2100,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['detalleComandas', 'ventas'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2109,5 +2163,4 @@
     </script>
 </body>
 </html>
-
 
