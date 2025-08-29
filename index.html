@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v1.0.0</title>
+    <title>Hugo Amadey Admin App v0.10.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -1835,29 +1835,6 @@
                 }
             });
 
-            exportarPdfComisionBtn.addEventListener('click', () => {
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                const profesionalSeleccionado = profesionalesCache.find(p => p.id === comisionProfesionalSelect.value);
-                const fechaInicio = document.getElementById('comision-fecha-inicio').value;
-                const fechaFin = document.getElementById('comision-fecha-fin').value;
-
-                doc.text(`Reporte de Comisiones para ${profesionalSeleccionado?.nombre || 'N/A'}`, 14, 15);
-                doc.setFontSize(10);
-                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
-
-                doc.autoTable({
-                    html: '#comision-report-table',
-                    startY: 25,
-                    theme: 'grid',
-                    headStyles: { fillColor: [31, 41, 55] },
-                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
-                });
-
-                doc.save(`comisiones_${profesionalSeleccionado?.nombre}_${fechaInicio}_${fechaFin}.pdf`);
-            });
-
             generarReporteFinanzasBtn.addEventListener('click', async () => {
                 const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
                 const fechaFin = document.getElementById('finanzas-fecha-fin').value;
@@ -2225,6 +2202,7 @@
                 }
             }
 
+
             // --- Lógica de Exportación ---
             function exportToPdf(tableId, reportName, orientation = 'p') {
                 const { jsPDF } = window.jspdf;
@@ -2235,9 +2213,25 @@
                 doc.text(`Reporte: ${reportName}`, 40, 40);
                 doc.setFontSize(10);
                 doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 40, 55);
+                
+                const table = document.getElementById(tableId);
+                // Clonar la tabla para no modificar la original
+                const tableClone = table.cloneNode(true);
+                if (!tableClone.querySelector('thead')) {
+                    const thead = document.createElement('thead');
+                    // Mover la primera fila del tbody al thead si es un resumen
+                     if(tableId === 'finanzas-report-table' && document.getElementById('finanzas-reporte-select').value === 'resumenFinanciero'){
+                        const headerRow = tableClone.querySelector('tbody > tr');
+                        if (headerRow) {
+                           thead.appendChild(headerRow);
+                        }
+                     }
+                    tableClone.insertBefore(thead, tableClone.firstChild);
+                }
+
 
                 doc.autoTable({
-                    html: `#${tableId}`,
+                    html: tableClone,
                     startY: 65,
                     theme: 'grid',
                     headStyles: { fillColor: [31, 41, 55] },
@@ -2260,25 +2254,19 @@
                 XLSX.writeFile(wb, `reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.xlsx`);
             }
 
+            exportarPdfComisionBtn.addEventListener('click', () => {
+                exportToPdf('comision-report-table', 'Comisiones');
+            });
+
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
-                const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                 if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
-                    showToast('Función de exportar no disponible para este reporte aún.');
-                    return;
-                }
                 exportToPdf('finanzas-report-table', reportName);
             });
 
             exportarXlsxFinanzasBtn.addEventListener('click', () => {
                  const select = document.getElementById('finanzas-reporte-select');
-                const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
-                    showToast('Función de exportar no disponible para este reporte aún.');
-                    return;
-                }
                 exportToXlsx('finanzas-report-table', reportName);
             });
 
