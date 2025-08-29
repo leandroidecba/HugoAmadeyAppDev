@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.10.1.2</title>
+    <title>Hugo Amadey Admin App v0.10.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -2226,8 +2226,8 @@
 
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF(orientation, 'pt', 'a4');
-                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
-                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                const fechaInicio = document.getElementById('comision-fecha-inicio').value || document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('comision-fecha-fin').value || document.getElementById('finanzas-fecha-fin').value;
 
                 doc.text(`Reporte: ${reportName}`, 40, 40);
                 doc.setFontSize(10);
@@ -2246,12 +2246,20 @@
             function exportToXlsx(tableId, reportName) {
                 const table = document.getElementById(tableId);
                 const wb = XLSX.utils.table_to_book(table, { sheet: reportName });
-                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
-                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                const fechaInicio = document.getElementById('comision-fecha-inicio').value || document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('comision-fecha-fin').value || document.getElementById('finanzas-fecha-fin').value;
                 XLSX.writeFile(wb, `reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.xlsx`);
             }
 
             exportarPdfComisionBtn.addEventListener('click', () => {
+                const head = [['Nº Com.', 'Fecha', 'Servicio/Producto', 'Voucher', '%', 'Facturado', 'Comisión']];
+                const body = [];
+                document.querySelectorAll('#comision-table-body tr').forEach(tr => {
+                    const row = [];
+                    tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
+                    body.push(row);
+                });
+                currentPdfData = { head, body };
                 exportToPdf('Comisiones');
             });
 
@@ -2264,7 +2272,11 @@
             exportarXlsxFinanzasBtn.addEventListener('click', () => {
                  const select = document.getElementById('finanzas-reporte-select');
                 const reportName = select.options[select.selectedIndex].text;
-                exportToXlsx('finanzas-report-table', reportName);
+                let tableId = 'finanzas-report-table';
+                if(document.getElementById('comisiones-view').checkVisibility()) {
+                    tableId = 'comision-report-table';
+                }
+                exportToXlsx(tableId, reportName);
             });
 
             retirarDineroBtn.addEventListener('click', async () => {
