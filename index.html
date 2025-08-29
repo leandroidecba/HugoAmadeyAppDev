@@ -1369,99 +1369,106 @@
                 }
                 
                 let subtotal = 0;
-                document.querySelectorAll('#items-list .item-entry').forEach(item => {
-                    subtotal += parseFloat(item.querySelector('.price-input').value) || 0;
-                });
-
-                let discount = null;
-                let discountAmount = 0;
-                const discountItem = document.querySelector('#discount-container .discount-item');
-                if (discountItem) {
-                    const type = discountItem.querySelector('.discount-type-selector').value;
-                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
-                    if (value > 0) {
-                        discount = { type, value };
-                        if (type === 'percentage') {
-                            discountAmount = subtotal * (value / 100);
-                        } else {
-                            discountAmount = value;
-                        }
-                    }
-                }
-                const totalAfterDiscount = subtotal - discountAmount;
-                
-                let totalPaid = 0, totalSurcharges = 0;
-                document.querySelectorAll('#payments-list .payment-item').forEach(item => {
-                    const baseAmount = parseFloat(item.querySelector('.payment-amount-input').value) || 0;
-                    let surchargeForThisPayment = 0;
-                    const surchargeAmount = parseFloat(item.querySelector('.surcharge-amount-input').value) || 0;
-                    const surchargePercent = parseFloat(item.querySelector('.surcharge-percent-input').value) || 0;
-                    if (surchargeAmount > 0) {
-                        surchargeForThisPayment = surchargeAmount;
-                    } else if (surchargePercent > 0) {
-                        surchargeForThisPayment = baseAmount * (surchargePercent / 100);
-                    }
-                    totalSurcharges += surchargeForThisPayment;
-                    totalPaid += baseAmount + surchargeForThisPayment;
-                });
-
-                const finalComandaTotal = totalAfterDiscount + totalSurcharges;
-                const remaining = finalComandaTotal - totalPaid;
-
-                if (remaining > 0.01) {
-                    showToast('La comanda debe estar saldada para poder guardarla.', true);
-                    return;
-                }
-
+                let itemsAreValid = true;
                 const items = Array.from(document.querySelectorAll('#items-list .item-entry')).map(itemEl => {
                     const type = itemEl.dataset.type;
                     const profesionalId = itemEl.querySelector('.item-profesional-selector')?.value;
-                    const profesional = profesionalesCache.find(p => p.id === profesionalId);
                     const precio = parseFloat(itemEl.querySelector('.price-input').value) || 0;
                     
-                    let itemData = {
-                        type: type,
-                        profesionalId: profesionalId || null,
-                        profesionalNombre: profesional?.nombre ?? null,
-                        precio: precio
-                    };
+                    let itemData = { type, precio };
 
                     if (type === 'servicio') {
-                        const servicioId = itemEl.querySelector('.item-service-id').value;
-                        const servicio = serviciosCache.find(s => s.id === servicioId);
-                        itemData.servicioId = servicioId;
-                        itemData.servicioNombre = servicio?.nombre ?? 'Desconocido';
+                        const serviceName = itemEl.querySelector('.item-service-search').value;
+                        if (!serviceName) itemsAreValid = false;
+                        itemData.servicioNombre = serviceName;
+                        if (!profesionalId) itemsAreValid = false;
+                        itemData.profesionalId = profesionalId;
+                        itemData.profesionalNombre = profesionalesCache.find(p=>p.id === profesionalId)?.nombre;
                         itemData.isVoucher = itemEl.querySelector('.item-voucher-check').checked;
-                    } else {
-                        itemData.servicioNombre = itemEl.querySelector('.item-name-input').value;
-                        if (type === 'producto') {
-                            itemData.categoria = 'P';
-                        }
+                    } else if (type === 'producto') {
+                        const productName = itemEl.querySelector('.item-name-input').value;
+                         if (!productName) itemsAreValid = false;
+                        itemData.servicioNombre = productName;
+                        if (!profesionalId) itemsAreValid = false;
+                        itemData.profesionalId = profesionalId;
+                        itemData.profesionalNombre = profesionalesCache.find(p=>p.id === profesionalId)?.nombre;
+                    } else { // 'otro'
+                         const otherName = itemEl.querySelector('.item-name-input').value;
+                         if (!otherName) itemsAreValid = false;
+                        itemData.servicioNombre = otherName;
                     }
+                    subtotal += precio;
                     return itemData;
                 });
 
+                if (!itemsAreValid) {
+                    showToast('Complete todos los campos de cada concepto (nombre, profesional, etc).', true);
+                    return;
+                }
+                
                 if (items.length === 0) {
                     showToast('La comanda debe tener al menos un concepto.', true);
                     return;
                 }
 
+                let paymentsAreValid = true;
                 const pagos = Array.from(document.querySelectorAll('#payments-list .payment-item')).map(itemEl => {
-                    const baseAmount = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
+                    const metodo = itemEl.querySelector('.payment-method-selector').value;
+                    const monto = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
+                    if(!metodo || monto <= 0) paymentsAreValid = false;
+                    
                     let surcharge = 0;
                     const surchargeAmount = parseFloat(itemEl.querySelector('.surcharge-amount-input').value) || 0;
                     const surchargePercent = parseFloat(itemEl.querySelector('.surcharge-percent-input').value) || 0;
                     if (surchargeAmount > 0) {
                         surcharge = surchargeAmount;
                     } else if (surchargePercent > 0) {
-                        surcharge = baseAmount * (surchargePercent / 100);
+                        surcharge = monto * (surchargePercent / 100);
                     }
-                    return { metodo: itemEl.querySelector('.payment-method-selector').value, monto: baseAmount, recargo: surcharge };
+                    return { metodo, monto, recargo: surcharge };
                 });
+
+                if (!paymentsAreValid) {
+                    showToast('Complete todos los campos de cada pago (método y monto).', true);
+                    return;
+                }
+                 if (pagos.length === 0) {
+                    showToast('Debe agregar al menos un medio de pago.', true);
+                    return;
+                }
+
+
+                let discount = null;
+                const discountItem = document.querySelector('#discount-container .discount-item');
+                if (discountItem) {
+                    const type = discountItem.querySelector('.discount-type-selector').value;
+                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
+                    if (value > 0) discount = { type, value };
+                }
                 
-                const comandaData = {
-                    numero: comandaNumero, cliente, items, pagos, discount, total: finalComandaTotal
-                };
+                // Recalcular totales finales para guardar
+                let finalSubtotal = 0;
+                items.forEach(item => finalSubtotal += item.precio);
+
+                let finalDiscountAmount = 0;
+                if (discount) {
+                    if (discount.type === 'percentage') {
+                        finalDiscountAmount = finalSubtotal * (discount.value / 100);
+                    } else {
+                        finalDiscountAmount = discount.value;
+                    }
+                }
+                const totalAfterDiscount = finalSubtotal - finalDiscountAmount;
+                const finalRecargos = pagos.reduce((sum, pago) => sum + pago.recargo, 0);
+                const finalComandaTotal = totalAfterDiscount + finalRecargos;
+                const finalPagado = pagos.reduce((sum, pago) => sum + pago.monto + pago.recargo, 0);
+
+                if (Math.abs(finalComandaTotal - finalPagado) > 0.01) {
+                    showToast('El total pagado no coincide con el total de la comanda. Revise los montos.', true);
+                    return;
+                }
+                
+                const comandaData = { numero: comandaNumero, cliente, items, pagos, discount, total: finalComandaTotal };
 
                 try {
                     if (id) {
@@ -2215,29 +2222,37 @@
                 doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 40, 55);
                 
                 const table = document.getElementById(tableId);
-                // Clonar la tabla para no modificar la original
-                const tableClone = table.cloneNode(true);
-                if (!tableClone.querySelector('thead')) {
-                    const thead = document.createElement('thead');
-                    // Mover la primera fila del tbody al thead si es un resumen
-                     if(tableId === 'finanzas-report-table' && document.getElementById('finanzas-reporte-select').value === 'resumenFinanciero'){
-                        const headerRow = tableClone.querySelector('tbody > tr');
-                        if (headerRow) {
-                           thead.appendChild(headerRow);
-                        }
-                     }
-                    tableClone.insertBefore(thead, tableClone.firstChild);
-                }
+                
+                let head = [];
+                let body = [];
+                
+                table.querySelectorAll('thead tr').forEach(tr => {
+                    const row = [];
+                    tr.querySelectorAll('th').forEach(th => row.push(th.innerText));
+                    head.push(row);
+                });
 
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    const row = [];
+                    tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
+                    body.push(row);
+                });
+
+                table.querySelectorAll('tfoot tr').forEach(tr => {
+                    const row = [];
+                    tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
+                    body.push(row); // Add footer rows to body for simplicity in PDF
+                });
 
                 doc.autoTable({
-                    html: tableClone,
+                    head: head,
+                    body: body,
                     startY: 65,
                     theme: 'grid',
                     headStyles: { fillColor: [31, 41, 55] },
                     footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
-                    didParseCell: function(data) {
-                        if (data.row.raw.classList.contains('summary-header-row')) {
+                     didParseCell: function(data) {
+                        if (data.row.raw.classList && data.row.raw.classList.contains('summary-header-row')) {
                             data.cell.styles.fillColor = '#374151';
                             data.cell.styles.fontStyle = 'bold';
                         }
