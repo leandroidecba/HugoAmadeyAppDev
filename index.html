@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.6</title>
+    <title>Hugo Amadey Admin App v0.9.8</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -59,6 +59,14 @@
         .table-container {
             max-height: 40vh;
             overflow: auto;
+        }
+        .summary-header-row {
+            background-color: #374151; /* gray-700 */
+            font-weight: bold;
+        }
+        .summary-header-row td {
+            padding-top: 0.75rem;
+            padding-bottom: 0.75rem;
         }
     </style>
 </head>
@@ -205,7 +213,7 @@
                                 <option value="ventas">Ventas</option>
                                 <option value="gastos">Gastos</option>
                                 <option value="pagos">Pagos</option>
-                                <option value="resumenFinanciero" disabled>Resumen Financiero (próximamente)</option>
+                                <option value="resumenFinanciero">Resumen Financiero</option>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
                         </div>
@@ -1878,6 +1886,9 @@
                     case 'pagos':
                         await generarReportePagos(fechaInicio, fechaFin);
                         break;
+                    case 'resumenFinanciero':
+                        await generarReporteResumenFinanciero(fechaInicio, fechaFin);
+                        break;
                     default:
                         showToast('Este reporte aún no está disponible.');
                         finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
@@ -2087,10 +2098,11 @@
                         <th class="p-2">Medio de Pago</th>
                         <th class="p-2 text-right">Importe</th>
                         <th class="p-2 text-right">Recargo</th>
+                        <th class="p-2 text-right">Total</th>
                     </tr>`;
                     
                     if (comandasSnapshot.empty) {
-                        finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
+                        finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
                         return;
                     }
@@ -2113,15 +2125,19 @@
 
                     let totalImporte = 0;
                     let totalRecargo = 0;
+                    let totalGeneral = 0;
                     finanzasTableBody.innerHTML = reportData.map(row => {
+                        const totalPago = row.importe + row.recargo;
                         totalImporte += row.importe;
                         totalRecargo += row.recargo;
+                        totalGeneral += totalPago;
                         return `<tr>
                             <td class="p-2 border-t border-gray-700">${row.numero}</td>
                             <td class="p-2 border-t border-gray-700">${row.fecha}</td>
                             <td class="p-2 border-t border-gray-700">${row.metodo}</td>
                             <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
                             <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalPago.toLocaleString('es-AR')}</td>
                         </tr>`;
                     }).join('');
 
@@ -2129,12 +2145,83 @@
                         <td colspan="3" class="p-2 font-bold">TOTALES</td>
                         <td class="p-2 text-right font-bold">$${totalImporte.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
+                        <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
 
                 } catch (error) {
                     log(`Error generando reporte de pagos: ${error.message}`);
                     showToast('No se pudo generar el reporte de pagos.', true);
-                    finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                    finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
+
+            async function generarReporteResumenFinanciero(fechaInicio, fechaFin) {
+                try {
+                    const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const comandasSnapshot = await getDocs(qComandas);
+
+                    let totalFacturadoSinDescuento = 0;
+                    let totalDescuentos = 0;
+                    let totalRecargos = 0;
+                    const pagosPorMedio = {};
+                    let totalPagos = 0;
+
+                    comandasSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        const subtotalItems = (comanda.items || []).reduce((sum, item) => sum + (item.precio || 0), 0);
+                        totalFacturadoSinDescuento += subtotalItems;
+
+                        if (comanda.discount && comanda.discount.value > 0) {
+                            if (comanda.discount.type === 'percentage') {
+                                totalDescuentos += subtotalItems * (comanda.discount.value / 100);
+                            } else {
+                                totalDescuentos += comanda.discount.value;
+                            }
+                        }
+
+                        (comanda.pagos || []).forEach(pago => {
+                            const recargo = pago.recargo || 0;
+                            const importe = pago.monto || 0;
+                            const totalPagoIndividual = importe + recargo;
+                            totalRecargos += recargo;
+                            pagosPorMedio[pago.metodo] = (pagosPorMedio[pago.metodo] || 0) + totalPagoIndividual;
+                            totalPagos += totalPagoIndividual;
+                        });
+                    });
+
+                    const netoVentas = totalFacturadoSinDescuento - totalDescuentos;
+                    const totalFacturacion = netoVentas + totalRecargos;
+
+                    finanzasTableHead.innerHTML = `<tr><th class="p-2">Concepto</th><th class="p-2 text-right">Total</th></tr>`;
+                    
+                    let bodyHtml = `
+                        <tr class="summary-header-row"><td colspan="2" class="p-2">Ventas</td></tr>
+                        <tr><td class="p-2 pl-6 border-t border-gray-700">Total facturado por comandas</td><td class="p-2 border-t border-gray-700 text-right">$${totalFacturadoSinDescuento.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6 border-t border-gray-700">Total de descuentos</td><td class="p-2 border-t border-gray-700 text-right text-orange-400">-$${totalDescuentos.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Neto de ventas</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${netoVentas.toLocaleString('es-AR')}</td></tr>
+                        
+                        <tr class="summary-header-row"><td colspan="2" class="p-2">Recargos</td></tr>
+                        <tr><td class="p-2 pl-6 border-t border-gray-700">Total ingresos por recargos</td><td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${totalRecargos.toLocaleString('es-AR')}</td></tr>
+
+                        <tr class="summary-header-row"><td colspan="2" class="p-2">Total Facturado</td></tr>
+                        <tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de facturación</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalFacturacion.toLocaleString('es-AR')}</td></tr>
+
+                        <tr class="summary-header-row"><td colspan="2" class="p-2">Pagos</td></tr>
+                    `;
+
+                    Object.keys(pagosPorMedio).sort().forEach(metodo => {
+                        bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total por ${metodo}</td><td class="p-2 border-t border-gray-700 text-right">$${pagosPorMedio[metodo].toLocaleString('es-AR')}</td></tr>`;
+                    });
+                    
+                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de pagos</td><td class="p-2 border-t border-gray-700 text-right font-semibold text-green-400">$${totalPagos.toLocaleString('es-AR')}</td></tr>`;
+
+                    finanzasTableBody.innerHTML = bodyHtml;
+                    finanzasTableFoot.innerHTML = '';
+
+                } catch (error) {
+                    log(`Error generando resumen financiero: ${error.message}`);
+                    showToast('No se pudo generar el resumen.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
 
@@ -2144,7 +2231,7 @@
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
 
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2162,7 +2249,13 @@
                     startY: 25,
                     theme: 'grid',
                     headStyles: { fillColor: [31, 41, 55] },
-                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
+                    didParseCell: function(data) {
+                        if (data.row.raw.classList.contains('summary-header-row')) {
+                            data.cell.styles.fillColor = '#374151';
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
                 });
                 doc.save(`reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.pdf`);
             });
@@ -2171,7 +2264,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
