@@ -1922,12 +1922,14 @@
                     const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
                     const comandasSnapshot = await getDocs(q);
                     
-                    const head = [['Nº Com.', 'Fecha', 'Cliente', 'Tipo', 'Concepto', 'Profesional', 'Voucher', 'Importe']];
-                    
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº Com.</th><th class="p-2">Fecha</th><th class="p-2">Cliente</th>
+                        <th class="p-2">Tipo</th><th class="p-2">Concepto</th><th class="p-2">Profesional</th>
+                        <th class="p-2">Voucher</th><th class="p-2 text-right">Importe</th>
+                    </tr>`;
+
                     if (comandasSnapshot.empty) {
-                        finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2">${h}</th>`).join('')}</tr>`;
                         finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-400">No se encontraron comandas.</td></tr>`;
-                        currentPdfData = { head:[], body: [] };
                         return;
                     }
                     
@@ -1951,19 +1953,24 @@
                     reportData.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
                     
                     let totalGeneral = 0;
-                    const body = reportData.map(row => {
+                    finanzasTableBody.innerHTML = reportData.map(row => {
                         totalGeneral += row.importe;
-                        return [row.numero, row.fecha, row.cliente, row.tipo, row.concepto, row.profesional, row.voucher, `$${row.importe.toLocaleString('es-AR')}`];
-                    });
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${row.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${row.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${row.cliente}</td>
+                            <td class="p-2 border-t border-gray-700">${row.tipo}</td>
+                            <td class="p-2 border-t border-gray-700">${row.concepto}</td>
+                            <td class="p-2 border-t border-gray-700">${row.profesional}</td>
+                            <td class="p-2 border-t border-gray-700">${row.voucher}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${row.importe.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
 
-                    finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2 ${['Importe'].includes(h) ? 'text-right' : ''}">${h}</th>`).join('')}</tr>`;
-                    finanzasTableBody.innerHTML = body.map(row => `<tr>${row.map((cell, i) => `<td class="p-2 border-t border-gray-700 ${[7].includes(i) ? 'text-right font-semibold' : ''}">${cell}</td>`).join('')}</tr>`).join('');
                     finanzasTableFoot.innerHTML = `<tr>
                         <td colspan="7" class="p-2 font-bold">TOTAL GENERAL</td>
                         <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
-
-                    currentPdfData = { head, body };
 
                 } catch (error) {
                     log(`Error generando reporte detalle de comandas: ${error.message}`);
@@ -1976,43 +1983,60 @@
                 try {
                     const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
                     const comandasSnapshot = await getDocs(q);
-                    
-                    const head = [['Nº Com.', 'Fecha', 'Cliente', 'Subtotal Items', 'Recargos', 'Descuentos', 'Total Pago']];
-                    finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2 ${['Subtotal Items', 'Recargos', 'Descuentos', 'Total Pago'].includes(h) ? 'text-right' : ''}">${h}</th>`).join('')}</tr>`;
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº Com.</th>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Cliente</th>
+                        <th class="p-2 text-right">Subtotal Items</th>
+                        <th class="p-2 text-right">Recargos</th>
+                        <th class="p-2 text-right">Descuentos</th>
+                        <th class="p-2 text-right">Total Pago</th>
+                    </tr>`;
 
                     if (comandasSnapshot.empty) {
                         finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">No se encontraron ventas.</td></tr>`;
-                        currentPdfData = { head:[], body: [] };
                         return;
                     }
 
                     const comandasData = comandasSnapshot.docs.map(doc => doc.data()).sort((a,b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
 
-                    let totalItemsGeneral = 0, totalRecargosGeneral = 0, totalDescuentosGeneral = 0, totalPagoGeneral = 0;
+                    let totalItemsGeneral = 0;
+                    let totalRecargosGeneral = 0;
+                    let totalDescuentosGeneral = 0;
+                    let totalPagoGeneral = 0;
 
-                    const body = comandasData.map(comanda => {
+                    finanzasTableBody.innerHTML = comandasData.map(comanda => {
                         const subtotalItems = (comanda.items || []).reduce((sum, item) => sum + (item.precio || 0), 0);
                         const totalRecargos = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.recargo || 0), 0);
+                        
                         let totalDescuento = 0;
                         if (comanda.discount && comanda.discount.value > 0) {
-                            totalDescuento = comanda.discount.type === 'percentage' ? subtotalItems * (comanda.discount.value / 100) : comanda.discount.value;
+                            if (comanda.discount.type === 'percentage') {
+                                totalDescuento = subtotalItems * (comanda.discount.value / 100);
+                            } else {
+                                totalDescuento = comanda.discount.value;
+                            }
                         }
+
                         const totalPago = comanda.total || 0;
+
                         totalItemsGeneral += subtotalItems;
                         totalRecargosGeneral += totalRecargos;
                         totalDescuentosGeneral += totalDescuento;
                         totalPagoGeneral += totalPago;
-                        return [comanda.numero, comanda.fecha, comanda.cliente, `$${subtotalItems.toLocaleString('es-AR')}`, `$${totalRecargos.toLocaleString('es-AR')}`, `$${totalDescuento.toLocaleString('es-AR')}`, `$${totalPago.toLocaleString('es-AR')}`];
-                    });
 
-                    finanzasTableBody.innerHTML = body.map(row => `<tr>
-                        <td class="p-2 border-t border-gray-700">${row[0]}</td><td class="p-2 border-t border-gray-700">${row[1]}</td>
-                        <td class="p-2 border-t border-gray-700">${row[2]}</td><td class="p-2 border-t border-gray-700 text-right">${row[3]}</td>
-                        <td class="p-2 border-t border-gray-700 text-right text-yellow-400">${row[4]}</td>
-                        <td class="p-2 border-t border-gray-700 text-right text-orange-400">${row[5]}</td>
-                        <td class="p-2 border-t border-gray-700 text-right font-semibold">${row[6]}</td>
-                    </tr>`).join('');
-                    
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${comanda.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.cliente}</td>
+                            <td class="p-2 border-t border-gray-700 text-right">$${subtotalItems.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${totalRecargos.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-orange-400">$${totalDescuento.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalPago.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
                     finanzasTableFoot.innerHTML = `<tr>
                         <td colspan="3" class="p-2 font-bold">TOTALES</td>
                         <td class="p-2 text-right font-bold">$${totalItemsGeneral.toLocaleString('es-AR')}</td>
@@ -2020,8 +2044,6 @@
                         <td class="p-2 text-right font-bold text-orange-400">$${totalDescuentosGeneral.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-green-400">$${totalPagoGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
-
-                    currentPdfData = { head, body };
 
                 } catch (error) {
                     log(`Error generando reporte de ventas: ${error.message}`);
@@ -2038,13 +2060,19 @@
                         where("date", "<=", fechaFin)
                     );
                     const gastosSnapshot = await getDocs(q);
-                    const head = [['Fecha', 'Operación', 'Concepto', 'Categoría', 'Medio de Pago', 'Importe']];
-                    finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2 ${['Importe'].includes(h) ? 'text-right' : ''}">${h}</th>`).join('')}</tr>`;
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Operación</th>
+                        <th class="p-2">Concepto</th>
+                        <th class="p-2">Categoría</th>
+                        <th class="p-2">Medio de Pago</th>
+                        <th class="p-2 text-right">Importe</th>
+                    </tr>`;
 
                     if (gastosSnapshot.empty) {
                         finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron gastos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
-                        currentPdfData = { head:[], body: [] };
                         return;
                     }
 
@@ -2052,22 +2080,23 @@
                     const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
                     
                     let totalGeneral = 0;
-                    const body = gastosData.map(gasto => {
+                    finanzasTableBody.innerHTML = gastosData.map(gasto => {
                         totalGeneral += gasto.amount || 0;
                         const tipoOperacion = categoriasOperativas.includes(gasto.categoria) ? 'Operativo' : 'Administrativo';
-                        return [gasto.date, tipoOperacion, gasto.concept, gasto.categoria, gasto.paymentMethod, `$${(gasto.amount || 0).toLocaleString('es-AR')}`];
-                    });
-                    
-                    finanzasTableBody.innerHTML = body.map(row => `<tr>
-                        ${row.map((cell, i) => `<td class="p-2 border-t border-gray-700 ${i === 5 ? 'text-right font-semibold text-red-400' : ''}">${cell}</td>`).join('')}
-                    </tr>`).join('');
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${gasto.date}</td>
+                            <td class="p-2 border-t border-gray-700">${tipoOperacion}</td>
+                            <td class="p-2 border-t border-gray-700">${gasto.concept}</td>
+                            <td class="p-2 border-t border-gray-700">${gasto.categoria}</td>
+                            <td class="p-2 border-t border-gray-700">${gasto.paymentMethod}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold text-red-400">$${(gasto.amount || 0).toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
 
                     finanzasTableFoot.innerHTML = `<tr>
                         <td colspan="5" class="p-2 font-bold">TOTAL GASTOS</td>
                         <td class="p-2 text-right font-bold text-red-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
-
-                    currentPdfData = { head, body };
 
                 } catch (error) {
                     log(`Error generando reporte de gastos: ${error.message}`);
@@ -2084,13 +2113,18 @@
                     );
                     const comandasSnapshot = await getDocs(q);
 
-                    const head = [['Nº Com.', 'Fecha', 'Medio de Pago', 'Importe', 'Recargo', 'Total']];
-                    finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2 ${['Importe', 'Recargo', 'Total'].includes(h) ? 'text-right' : ''}">${h}</th>`).join('')}</tr>`;
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº Com.</th>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Medio de Pago</th>
+                        <th class="p-2 text-right">Importe</th>
+                        <th class="p-2 text-right">Recargo</th>
+                        <th class="p-2 text-right">Total</th>
+                    </tr>`;
                     
                     if (comandasSnapshot.empty) {
                         finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
-                        currentPdfData = { head:[], body: [] };
                         return;
                     }
                     
@@ -2110,21 +2144,23 @@
                     
                     reportData.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
 
-                    let totalImporte = 0, totalRecargo = 0, totalGeneral = 0;
-                    const body = reportData.map(row => {
+                    let totalImporte = 0;
+                    let totalRecargo = 0;
+                    let totalGeneral = 0;
+                    finanzasTableBody.innerHTML = reportData.map(row => {
                         const totalPago = row.importe + row.recargo;
                         totalImporte += row.importe;
                         totalRecargo += row.recargo;
                         totalGeneral += totalPago;
-                        return [row.numero, row.fecha, row.metodo, `$${row.importe.toLocaleString('es-AR')}`, `$${row.recargo.toLocaleString('es-AR')}`, `$${totalPago.toLocaleString('es-AR')}`];
-                    });
-
-                    finanzasTableBody.innerHTML = body.map(row => `<tr>
-                        <td class="p-2 border-t border-gray-700">${row[0]}</td><td class="p-2 border-t border-gray-700">${row[1]}</td>
-                        <td class="p-2 border-t border-gray-700">${row[2]}</td><td class="p-2 border-t border-gray-700 text-right">${row[3]}</td>
-                        <td class="p-2 border-t border-gray-700 text-right text-yellow-400">${row[4]}</td>
-                        <td class="p-2 border-t border-gray-700 text-right font-semibold">${row[5]}</td>
-                    </tr>`).join('');
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${row.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${row.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${row.metodo}</td>
+                            <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalPago.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
 
                     finanzasTableFoot.innerHTML = `<tr>
                         <td colspan="3" class="p-2 font-bold">TOTALES</td>
@@ -2132,8 +2168,6 @@
                         <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
-                    
-                    currentPdfData = { head, body };
 
                 } catch (error) {
                     log(`Error generando reporte de pagos: ${error.message}`);
@@ -2170,44 +2204,29 @@
                     const netoVentas = totalFacturadoSinDescuento - totalDescuentos;
                     const totalFacturacion = netoVentas + totalRecargos;
 
-                    const head = [['Concepto', 'Total']];
-                    let body = [];
-
-                    finanzasTableHead.innerHTML = `<tr>${head[0].map(h => `<th class="p-2 ${h === 'Total' ? 'text-right' : ''}">${h}</th>`).join('')}</tr>`;
+                    finanzasTableHead.innerHTML = `<tr><th class="p-2">Concepto</th><th class="p-2 text-right">Total</th></tr>`;
                     
                     let bodyHtml = `<tr class="summary-header-row"><td colspan="2" class="p-2">Ventas</td></tr>`;
-                    body.push(['Ventas', '']);
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total facturado por comandas</td><td class="p-2 border-t border-gray-700 text-right">$${totalFacturadoSinDescuento.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Total facturado por comandas', `$${totalFacturadoSinDescuento.toLocaleString('es-AR')}`]);
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total de descuentos</td><td class="p-2 border-t border-gray-700 text-right text-orange-400">-$${totalDescuentos.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Total de descuentos', `-$${totalDescuentos.toLocaleString('es-AR')}`]);
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Neto de ventas</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${netoVentas.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Neto de ventas', `$${netoVentas.toLocaleString('es-AR')}`]);
                     
                     bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Recargos</td></tr>`;
-                    body.push(['Recargos', '']);
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total ingresos por recargos</td><td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${totalRecargos.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Total ingresos por recargos', `$${totalRecargos.toLocaleString('es-AR')}`]);
 
                     bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Total Facturado</td></tr>`;
-                    body.push(['Total Facturado', '']);
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de facturación</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalFacturacion.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Total de facturación', `$${totalFacturacion.toLocaleString('es-AR')}`]);
 
                     bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Pagos</td></tr>`;
-                    body.push(['Pagos', '']);
 
                     Object.keys(pagosPorMedio).sort().forEach(metodo => {
                         bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total por ${metodo}</td><td class="p-2 border-t border-gray-700 text-right">$${pagosPorMedio[metodo].toLocaleString('es-AR')}</td></tr>`;
-                        body.push([`  Total por ${metodo}`, `$${pagosPorMedio[metodo].toLocaleString('es-AR')}`]);
                     });
                     
                     bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de pagos</td><td class="p-2 border-t border-gray-700 text-right font-semibold text-green-400">$${totalPagos.toLocaleString('es-AR')}</td></tr>`;
-                    body.push(['  Total de pagos', `$${totalPagos.toLocaleString('es-AR')}`]);
 
                     finanzasTableBody.innerHTML = bodyHtml;
                     finanzasTableFoot.innerHTML = '';
-                    currentPdfData = { head, body };
 
                 } catch (error) {
                     log(`Error generando resumen financiero: ${error.message}`);
@@ -2218,12 +2237,7 @@
 
 
             // --- Lógica de Exportación ---
-            function exportToPdf(reportName, orientation = 'p') {
-                if (!currentPdfData || currentPdfData.body.length === 0) {
-                    showToast('No hay datos para exportar.', true);
-                    return;
-                }
-
+            function exportToPdf(tableId, reportName, orientation = 'p') {
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF(orientation, 'pt', 'a4');
                 const fechaInicio = document.getElementById('comision-fecha-inicio').value || document.getElementById('finanzas-fecha-inicio').value;
@@ -2234,11 +2248,17 @@
                 doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 40, 55);
 
                 doc.autoTable({
-                    head: currentPdfData.head,
-                    body: currentPdfData.body,
+                    html: `#${tableId}`,
                     startY: 65,
                     theme: 'grid',
                     headStyles: { fillColor: [31, 41, 55] },
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
+                    didParseCell: function(data) {
+                        if (data.row.raw.classList.contains('summary-header-row')) {
+                            data.cell.styles.fillColor = '#374151';
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
                 });
                 doc.save(`reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.pdf`);
             }
@@ -2252,21 +2272,13 @@
             }
 
             exportarPdfComisionBtn.addEventListener('click', () => {
-                const head = [['Nº Com.', 'Fecha', 'Servicio/Producto', 'Voucher', '%', 'Facturado', 'Comisión']];
-                const body = [];
-                document.querySelectorAll('#comision-table-body tr').forEach(tr => {
-                    const row = [];
-                    tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
-                    body.push(row);
-                });
-                currentPdfData = { head, body };
-                exportToPdf('Comisiones');
+                exportToPdf('comision-report-table', 'Comisiones');
             });
 
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
                 const reportName = select.options[select.selectedIndex].text;
-                exportToPdf(reportName);
+                exportToPdf('finanzas-report-table', reportName);
             });
 
             exportarXlsxFinanzasBtn.addEventListener('click', () => {
