@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.13.1</title>
+    <title>Hugo Amadey Admin App v0.13.3</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -324,10 +324,11 @@
     <div id="gasto-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
         <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col">
             <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-bold">Nuevo Gasto</h2>
+                <h2 id="gasto-modal-title" class="text-xl font-bold">Nuevo Gasto</h2>
                 <button id="close-gasto-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </header>
             <form id="gasto-form" class="p-4 space-y-4">
+                <input type="hidden" id="gasto-id">
                 <input type="text" id="gasto-concepto" placeholder="Concepto del gasto" class="w-full bg-gray-800 rounded-lg px-3 py-2" required>
                 <div>
                     <label class="text-sm font-medium text-gray-400">Categoría</label>
@@ -514,6 +515,8 @@
             const closeGastoModalBtn = document.getElementById('close-gasto-modal-btn');
             const saveGastoBtn = document.getElementById('save-gasto-btn');
             const gastoForm = document.getElementById('gasto-form');
+            const gastoModalTitle = document.getElementById('gasto-modal-title');
+            const gastoIdInput = document.getElementById('gasto-id');
             const categoriaSelect = document.getElementById('gasto-categoria');
             const medioPagoGastoSelect = document.getElementById('gasto-medio-pago');
             const deCajaContainer = document.getElementById('gasto-de-caja-container');
@@ -779,13 +782,16 @@
                 mainApp.classList.add('hidden');
                 showRoleSelectionScreen();
                 loginScreen.classList.remove('hidden');
-                switchTab('dashboard'); 
+                location.reload();
             }
 
             function applyRolePermissions() {
                 // Reset to admin defaults first
+                reportComisionesBtn.classList.remove('hidden');
                 reportFinanzasBtn.classList.remove('hidden');
+                reportTypeSelector.classList.replace('grid-cols-1', 'grid-cols-3');
                 reportTypeSelector.classList.replace('grid-cols-2', 'grid-cols-3');
+
                 document.getElementById('dashboard-total-facturado-card').classList.remove('hidden');
                 document.getElementById('date-selector-btn').classList.remove('hidden');
                 document.getElementById('admin-gastos-section').classList.remove('hidden');
@@ -801,7 +807,9 @@
 
                 if (currentUserRole === 'cajero') {
                     reportFinanzasBtn.classList.add('hidden');
-                    reportTypeSelector.classList.replace('grid-cols-3', 'grid-cols-2');
+                    reportComisionesBtn.classList.add('hidden');
+                    reportTypeSelector.classList.replace('grid-cols-3', 'grid-cols-1');
+
                     document.getElementById('dashboard-total-facturado-card').classList.add('hidden');
                     document.getElementById('date-selector-btn').classList.add('hidden');
                     document.getElementById('admin-gastos-section').classList.add('hidden');
@@ -1050,11 +1058,11 @@
                         const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
                         let operativosCount = 0, adminCount = 0;
                         gastosSnapshot.forEach(doc => {
-                            const gasto = doc.data();
+                            const gasto = {id: doc.id, ...doc.data()};
                             const gastoEl = document.createElement('button');
                             gastoEl.className = 'w-full text-left bg-gray-800 p-3 rounded-lg hover:bg-gray-700 transition-colors';
                             gastoEl.innerHTML = `<div class="flex justify-between items-center"><p class="font-semibold">${gasto.concept}</p><p class="text-red-400 font-bold">-$${(gasto.amount || 0).toLocaleString('es-AR')}</p></div><p class="text-sm text-gray-400">Categoría: ${gasto.categoria || 'Sin categoría'}</p>`;
-                            gastoEl.addEventListener('click', () => openGastoDetailModal(doc.id, gasto));
+                            gastoEl.addEventListener('click', () => openGastoDetailModal(gasto.id, gasto));
                             if (categoriasOperativas.includes(gasto.categoria)) {
                                 gastosOperativosListEl.appendChild(gastoEl);
                                 totalGastosOp += gasto.amount || 0;
@@ -1125,13 +1133,18 @@
                 openModal(comandaModal); 
             });
             actionNewGastoBtn.addEventListener('click', () => {
+                gastoIdInput.value = ''; // Ensure no ID is set for new gasto
+                gastoModalTitle.textContent = "Nuevo Gasto";
+                saveGastoBtn.textContent = "Guardar Gasto";
+                gastoForm.reset();
+
                 if (currentUserRole === 'cajero') {
                     const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero);
                     categoriaSelect.innerHTML = categoriasOperativas.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
                 } else {
                     categoriaSelect.innerHTML = categoriasGastoCache.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('');
                 }
-                gastoForm.reset();
+                
                 medioPagoGastoSelect.value = 'Efectivo'; 
                 medioPagoGastoSelect.dispatchEvent(new Event('change'));
                 deCajaCheckbox.checked = true;
@@ -1163,26 +1176,43 @@
             saveGastoBtn.addEventListener('click', () => gastoForm.requestSubmit());
             gastoForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const id = gastoIdInput.value;
                 const concepto = document.getElementById('gasto-concepto').value, categoria = categoriaSelect.value, medioPago = medioPagoGastoSelect.value, monto = parseFloat(document.getElementById('gasto-monto').value);
                 if (!concepto || !categoria || !medioPago || isNaN(monto) || monto <= 0) { showToast("Por favor, completa todos los campos.", true); return; }
-                const now = new Date();
+                
                 const esDeCaja = deCajaCheckbox.checked && !deCajaContainer.classList.contains('hidden');
-                const newGasto = { 
-                    type: 'gasto', 
-                    concept: concepto, 
-                    categoria, 
-                    paymentMethod: medioPago, 
-                    amount: monto, 
-                    deCaja: esDeCaja,
-                    date: now.toISOString().slice(0, 10), 
-                    time: now.toTimeString().slice(0, 5), 
-                    createdAt: serverTimestamp() 
-                };
+                
                 try {
-                    await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newGasto);
-                    showToast('Gasto guardado correctamente.');
+                    if (id) {
+                        const gastoRef = doc(db, `artifacts/${appId}/public/data/movimientos`, id);
+                        await updateDoc(gastoRef, { 
+                            concept: concepto, 
+                            categoria, 
+                            paymentMethod: medioPago, 
+                            amount: monto, 
+                            deCaja: esDeCaja,
+                        });
+                        showToast('Gasto actualizado correctamente.');
+                    } else {
+                        const now = new Date();
+                        const newGasto = { 
+                            type: 'gasto', 
+                            concept: concepto, 
+                            categoria, 
+                            paymentMethod: medioPago, 
+                            amount: monto, 
+                            deCaja: esDeCaja,
+                            date: now.toISOString().slice(0, 10), 
+                            time: now.toTimeString().slice(0, 5), 
+                            createdAt: serverTimestamp() 
+                        };
+                        await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newGasto);
+                        showToast('Gasto guardado correctamente.');
+                    }
                     gastoForm.reset();
+                    gastoIdInput.value = '';
                     closeModal(gastoModal);
+                    location.reload();
                 } catch (error) {
                     log(`[ERROR] al guardar el gasto: ${error.message}`);
                     showToast('Hubo un error al guardar el gasto.', true);
@@ -1404,9 +1434,14 @@
                     validationError = 'La comanda debe tener al menos un concepto.';
                 } else {
                     for (const [index, itemEl] of itemEntries.entries()) {
-                        if (itemEl.dataset.type === 'servicio' && !itemEl.querySelector('.item-service-id').value) {
+                        const itemType = itemEl.dataset.type;
+                        if (itemType === 'servicio' && !itemEl.querySelector('.item-service-id').value) {
                             validationError = `Debes seleccionar un servicio de la lista para el concepto #${index + 1}.`;
                             break;
+                        }
+                        if ((itemType === 'servicio' || itemType === 'producto') && !itemEl.querySelector('.item-profesional-selector').value) {
+                             validationError = `Falta asignar un profesional al concepto #${index + 1}.`;
+                             break;
                         }
                     }
                 }
@@ -1548,8 +1583,7 @@
                     }
                     resetComandaModal();
                     closeModal(comandaModal);
-                    const todayString = new Date().toISOString().slice(0, 10);
-                    fetchDetailsForDate(todayString);
+                    location.reload();
                 } catch (error) {
                     log(`Error guardando comanda: ${error.message}`);
                     showToast('Error al guardar la comanda.', true);
@@ -1614,6 +1648,36 @@
                     showToast("No se pudo cargar la comanda para editar.", true);
                 }
             }
+            
+            async function populateGastoModalForEdit(gastoId) {
+                 try {
+                    const gastoRef = doc(db, `artifacts/${appId}/public/data/movimientos`, gastoId);
+                    const gastoSnap = await getDoc(gastoRef);
+                    if (!gastoSnap.exists()) {
+                        showToast("El gasto no existe.", true);
+                        return;
+                    }
+                    const gasto = gastoSnap.data();
+                    gastoIdInput.value = gastoId;
+                    document.getElementById('gasto-concepto').value = gasto.concept;
+                    document.getElementById('gasto-categoria').value = gasto.categoria;
+                    document.getElementById('gasto-medio-pago').value = gasto.paymentMethod;
+                    document.getElementById('gasto-monto').value = gasto.amount;
+                    document.getElementById('gasto-de-caja-checkbox').checked = gasto.deCaja || false;
+                    
+                    medioPagoGastoSelect.dispatchEvent(new Event('change'));
+
+                    gastoModalTitle.textContent = `Editando Gasto`;
+                    saveGastoBtn.textContent = "Guardar Cambios";
+                    
+                    closeModal(gastoDetailModal);
+                    openModal(gastoModal);
+
+                } catch (error) {
+                    log(`Error al cargar gasto para editar: ${error.message}`);
+                    showToast("No se pudo cargar el gasto para editar.", true);
+                }
+            }
 
             async function deleteComandaAndMovement(comandaId) {
                 if (!comandaId) {
@@ -1634,8 +1698,8 @@
                     await Promise.all(deletePromises);
 
                     log(`Comanda ${comandaId} y sus movimientos asociados eliminados.`);
-                    await fetchAllInitialDataForReports();
                     showToast('Comanda eliminada correctamente.');
+                    location.reload();
 
                 } catch (error) {
                     log(`[ERROR] al eliminar comanda ${comandaId}: ${error.message}`);
@@ -1660,14 +1724,17 @@
                 closeModal(comandaModal);
             });
 
-            editGastoBtn.addEventListener('click', () => showToast('La edición de gastos aún no está implementada.', true));
+            editGastoBtn.addEventListener('click', () => {
+                const gastoId = document.getElementById('detail-gasto-id').value;
+                if(gastoId) populateGastoModalForEdit(gastoId);
+            });
             deleteGastoBtn.addEventListener('click', async () => {
                 const gastoId = document.getElementById('detail-gasto-id').value;
                 try {
                     await deleteDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, gastoId));
                     closeModal(gastoDetailModal);
-                    await fetchAllInitialDataForReports();
                     showToast('Gasto eliminado correctamente.');
+                    location.reload();
                 } catch (error) {
                     log(`[ERROR] al eliminar gasto: ${error.message}`);
                     showToast('No se pudo eliminar el gasto.', true);
@@ -2314,10 +2381,11 @@
                         <th class="p-2">Medio de Pago</th>
                         <th class="p-2 text-right">Importe</th>
                         <th class="p-2 text-right">Recargo</th>
+                        <th class="p-2 text-right">Total</th>
                     </tr>`;
                     
                     if (comandasSnapshot.empty) {
-                        finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
+                        finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
                         return;
                     }
@@ -2340,15 +2408,19 @@
 
                     let totalImporte = 0;
                     let totalRecargo = 0;
+                    let totalGeneral = 0;
                     finanzasTableBody.innerHTML = reportData.map(row => {
+                        const totalFila = row.importe + row.recargo;
                         totalImporte += row.importe;
                         totalRecargo += row.recargo;
+                        totalGeneral += totalFila;
                         return `<tr>
                             <td class="p-2 border-t border-gray-700">${row.numero}</td>
                             <td class="p-2 border-t border-gray-700">${row.fecha}</td>
                             <td class="p-2 border-t border-gray-700">${row.metodo}</td>
                             <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
                             <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalFila.toLocaleString('es-AR')}</td>
                         </tr>`;
                     }).join('');
 
@@ -2356,12 +2428,13 @@
                         <td colspan="3" class="p-2 font-bold">TOTALES</td>
                         <td class="p-2 text-right font-bold">$${totalImporte.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
+                        <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
 
                 } catch (error) {
                     log(`Error generando reporte de pagos: ${error.message}`);
                     showToast('No se pudo generar el reporte de pagos.', true);
-                    finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                    finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
 
