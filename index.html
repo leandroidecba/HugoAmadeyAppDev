@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.11.2</title>
+    <title>Hugo Amadey Admin App v0.12.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -197,7 +197,8 @@
                                 <input type="date" id="finanzas-fecha-fin" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
                             </div>
                             <select id="finanzas-reporte-select" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
-                                <option value="detalleComandas">Detalle comandas</option>
+                                <option value="comandas">Comandas</option>
+                                <option value="detalleComandas">Detalle de Items</option>
                                 <option value="ventas">Ventas</option>
                                 <option value="gastos">Gastos</option>
                                 <option value="pagos">Pagos</option>
@@ -1867,10 +1868,13 @@
 
                 finanzasReporteContainer.classList.remove('hidden');
                 finanzasTableHead.innerHTML = '';
-                finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
+                finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
                 finanzasTableFoot.innerHTML = '';
 
                 switch (tipoReporte) {
+                    case 'comandas':
+                        await generarReporteComandas(fechaInicio, fechaFin);
+                        break;
                     case 'detalleComandas':
                         await generarReporteDetalleComandas(fechaInicio, fechaFin);
                         break;
@@ -1885,10 +1889,100 @@
                         break;
                     default:
                         showToast('Este reporte aún no está disponible.');
-                        finanzasTableBody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
+                        finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
                         break;
                 }
             });
+
+            async function generarReporteComandas(fechaInicio, fechaFin) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const comandasSnapshot = await getDocs(q);
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Nº</th>
+                        <th class="p-2">Fecha</th>
+                        <th class="p-2">Cliente</th>
+                        <th class="p-2">Conceptos</th>
+                        <th class="p-2 text-right">Subtotal</th>
+                        <th class="p-2 text-right">Desc.</th>
+                        <th class="p-2">Pagos</th>
+                        <th class="p-2 text-right">Recargos</th>
+                        <th class="p-2 text-right">Total Pagado</th>
+                    </tr>`;
+
+                    if (comandasSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">No se encontraron comandas.</td></tr>`;
+                        finanzasTableFoot.innerHTML = '';
+                        return;
+                    }
+
+                    const comandasData = comandasSnapshot.docs.map(doc => doc.data()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero));
+                    
+                    let totalSubtotalGeneral = 0;
+                    let totalDescuentoGeneral = 0;
+                    let totalRecargosGeneral = 0;
+                    let totalPagadoGeneral = 0;
+
+                    finanzasTableBody.innerHTML = comandasData.map(comanda => {
+                        const conceptosHTML = (comanda.items || []).map(item => {
+                            const profesional = item.profesionalNombre ? `(${item.profesionalNombre})` : '';
+                            const voucher = item.isVoucher ? ' [V]' : '';
+                            return `<div>${item.servicioNombre} $${(item.precio || 0).toLocaleString('es-AR')} ${profesional}${voucher}</div>`;
+                        }).join('');
+
+                        const subtotalItems = (comanda.items || []).reduce((sum, item) => sum + (item.precio || 0), 0);
+                        
+                        let totalDescuento = 0;
+                        if (comanda.discount && comanda.discount.value > 0) {
+                            if (comanda.discount.type === 'percentage') {
+                                totalDescuento = subtotalItems * (comanda.discount.value / 100);
+                            } else {
+                                totalDescuento = comanda.discount.value;
+                            }
+                        }
+
+                        const pagosHTML = (comanda.pagos || []).map(pago => {
+                            const recargo = pago.recargo > 0 ? `(+$${pago.recargo.toLocaleString('es-AR')})` : '';
+                            return `<div>${pago.metodo} $${pago.monto.toLocaleString('es-AR')} ${recargo}</div>`;
+                        }).join('');
+
+                        const totalRecargos = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.recargo || 0), 0);
+                        const totalPagado = comanda.total || 0;
+
+                        totalSubtotalGeneral += subtotalItems;
+                        totalDescuentoGeneral += totalDescuento;
+                        totalRecargosGeneral += totalRecargos;
+                        totalPagadoGeneral += totalPagado;
+
+                        return `<tr class="align-top">
+                            <td class="p-2 border-t border-gray-700">${comanda.numero}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.fecha}</td>
+                            <td class="p-2 border-t border-gray-700">${comanda.cliente}</td>
+                            <td class="p-2 border-t border-gray-700 text-xs">${conceptosHTML}</td>
+                            <td class="p-2 border-t border-gray-700 text-right">$${subtotalItems.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-orange-400">$${totalDescuento.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-xs">${pagosHTML}</td>
+                            <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${totalRecargos.toLocaleString('es-AR')}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalPagado.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+                    
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td colspan="4" class="p-2 font-bold">TOTALES</td>
+                        <td class="p-2 text-right font-bold">$${totalSubtotalGeneral.toLocaleString('es-AR')}</td>
+                        <td class="p-2 text-right font-bold text-orange-400">$${totalDescuentoGeneral.toLocaleString('es-AR')}</td>
+                        <td class="p-2 font-bold"></td>
+                        <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargosGeneral.toLocaleString('es-AR')}</td>
+                        <td class="p-2 text-right font-bold text-green-400">$${totalPagadoGeneral.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte 'Comandas': ${error.message}`);
+                    showToast('No se pudo generar el reporte de Comandas.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
 
             async function generarReporteDetalleComandas(fechaInicio, fechaFin) {
                 try {
@@ -2149,7 +2243,7 @@
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
 
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2176,7 +2270,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
