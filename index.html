@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.13.3</title>
+    <title>Hugo Amadey Admin App v0.13.4</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -604,6 +604,7 @@
             let aperturaCajaDocId = null;
             let currentDate = new Date();
             let datesWithRecords = new Set();
+            let currentlyViewedDate = new Date().toISOString().slice(0, 10);
             let currentEditingPreset = { type: null, id: null };
             let currentUserRole = null;
             let selectedRoleForLogin = null;
@@ -842,6 +843,7 @@
             tabReportesBtn.addEventListener('click', () => {
                 switchTab('reportes');
                 const todayString = new Date().toISOString().slice(0, 10);
+                currentlyViewedDate = todayString;
                 updateDateSelectorButton(todayString);
                 fetchDetailsForDate(todayString);
             });
@@ -979,6 +981,7 @@
                     });
                     renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
                     const todayString = new Date().toISOString().slice(0, 10);
+                    currentlyViewedDate = todayString;
                     updateDateSelectorButton(todayString);
                     fetchDetailsForDate(todayString);
                 } catch (error) {
@@ -1009,6 +1012,7 @@
                     dayEl.className = 'p-2 rounded-full hover:bg-gray-700 transition-colors';
                     if (datesWithRecords.has(dateString)) dayEl.classList.add('day-with-record');
                     dayEl.addEventListener('click', () => {
+                        currentlyViewedDate = dateString;
                         updateDateSelectorButton(dateString);
                         fetchDetailsForDate(dateString);
                         closeModal(calendarModal);
@@ -1212,7 +1216,7 @@
                     gastoForm.reset();
                     gastoIdInput.value = '';
                     closeModal(gastoModal);
-                    location.reload();
+                    fetchDetailsForDate(currentlyViewedDate);
                 } catch (error) {
                     log(`[ERROR] al guardar el gasto: ${error.message}`);
                     showToast('Hubo un error al guardar el gasto.', true);
@@ -1583,7 +1587,7 @@
                     }
                     resetComandaModal();
                     closeModal(comandaModal);
-                    location.reload();
+                    fetchDetailsForDate(currentlyViewedDate);
                 } catch (error) {
                     log(`Error guardando comanda: ${error.message}`);
                     showToast('Error al guardar la comanda.', true);
@@ -1699,7 +1703,7 @@
 
                     log(`Comanda ${comandaId} y sus movimientos asociados eliminados.`);
                     showToast('Comanda eliminada correctamente.');
-                    location.reload();
+                    fetchDetailsForDate(currentlyViewedDate);
 
                 } catch (error) {
                     log(`[ERROR] al eliminar comanda ${comandaId}: ${error.message}`);
@@ -1734,7 +1738,7 @@
                     await deleteDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, gastoId));
                     closeModal(gastoDetailModal);
                     showToast('Gasto eliminado correctamente.');
-                    location.reload();
+                    fetchDetailsForDate(currentlyViewedDate);
                 } catch (error) {
                     log(`[ERROR] al eliminar gasto: ${error.message}`);
                     showToast('No se pudo eliminar el gasto.', true);
