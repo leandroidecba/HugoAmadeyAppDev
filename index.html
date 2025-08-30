@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.13.4</title>
+    <title>Hugo Amadey Admin App v0.13.5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -2383,13 +2383,14 @@
                         <th class="p-2">Nº Com.</th>
                         <th class="p-2">Fecha</th>
                         <th class="p-2">Medio de Pago</th>
+                        <th class="p-2">Digital</th>
                         <th class="p-2 text-right">Importe</th>
                         <th class="p-2 text-right">Recargo</th>
                         <th class="p-2 text-right">Total</th>
                     </tr>`;
                     
                     if (comandasSnapshot.empty) {
-                        finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
+                        finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
                         return;
                     }
@@ -2398,10 +2399,12 @@
                     comandasSnapshot.forEach(doc => {
                         const comanda = doc.data();
                         (comanda.pagos || []).forEach(pago => {
+                             const medioDePago = mediosDePagoCache.find(m => m.nombre === pago.metodo);
                             reportData.push({
                                 numero: comanda.numero,
                                 fecha: comanda.fecha,
                                 metodo: pago.metodo,
+                                esDigital: medioDePago && medioDePago.esDigital ? 'Sí' : 'No',
                                 importe: pago.monto || 0,
                                 recargo: pago.recargo || 0
                             });
@@ -2422,6 +2425,7 @@
                             <td class="p-2 border-t border-gray-700">${row.numero}</td>
                             <td class="p-2 border-t border-gray-700">${row.fecha}</td>
                             <td class="p-2 border-t border-gray-700">${row.metodo}</td>
+                            <td class="p-2 border-t border-gray-700">${row.esDigital}</td>
                             <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
                             <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
                             <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalFila.toLocaleString('es-AR')}</td>
@@ -2429,7 +2433,7 @@
                     }).join('');
 
                     finanzasTableFoot.innerHTML = `<tr>
-                        <td colspan="3" class="p-2 font-bold">TOTALES</td>
+                        <td colspan="4" class="p-2 font-bold">TOTALES</td>
                         <td class="p-2 text-right font-bold">$${totalImporte.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
@@ -2438,7 +2442,7 @@
                 } catch (error) {
                     log(`Error generando reporte de pagos: ${error.message}`);
                     showToast('No se pudo generar el reporte de pagos.', true);
-                    finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                    finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
 
