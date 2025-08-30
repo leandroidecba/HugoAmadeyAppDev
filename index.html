@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.7</title>
+    <title>Hugo Amadey Admin App v0.9.6</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -59,14 +59,6 @@
         .table-container {
             max-height: 40vh;
             overflow: auto;
-        }
-        .summary-header-row {
-            background-color: #374151; /* gray-700 */
-            font-weight: bold;
-        }
-        .summary-header-row td {
-            padding-top: 0.75rem;
-            padding-bottom: 0.75rem;
         }
     </style>
 </head>
@@ -213,7 +205,7 @@
                                 <option value="ventas">Ventas</option>
                                 <option value="gastos">Gastos</option>
                                 <option value="pagos">Pagos</option>
-                                <option value="resumenFinanciero">Resumen Financiero</option>
+                                <option value="resumenFinanciero" disabled>Resumen Financiero (próximamente)</option>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
                         </div>
@@ -1183,7 +1175,7 @@
                 return `<div class="item-entry bg-gray-800 p-3 rounded-lg space-y-2" data-type="servicio">
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="relative">
-                                    <input type="text" class="item-service-search w-full bg-gray-700 rounded-md px-2 py-2 text-sm" placeholder="Buscar servicio..." value="${item.servicioNombre || ''}" data-selected-name="${item.servicioNombre || ''}">
+                                    <input type="text" class="item-service-search w-full bg-gray-700 rounded-md px-2 py-2 text-sm" placeholder="Buscar servicio..." value="${item.servicioNombre || ''}">
                                     <input type="hidden" class="item-service-id" value="${item.servicioId || ''}">
                                     <div class="search-results absolute z-10 w-full bg-gray-600 rounded-b-md hidden custom-scrollbar"></div>
                                 </div>
@@ -1264,9 +1256,7 @@
                 if (e.target.closest('.search-results > div')) {
                     const serviceDiv = e.target.closest('.search-results > div');
                     const itemEntry = serviceDiv.closest('.item-entry');
-                    const searchInput = itemEntry.querySelector('.item-service-search');
-                    searchInput.value = serviceDiv.textContent;
-                    searchInput.dataset.selectedName = serviceDiv.textContent;
+                    itemEntry.querySelector('.item-service-search').value = serviceDiv.textContent;
                     itemEntry.querySelector('.item-service-id').value = serviceDiv.dataset.id;
                     itemEntry.querySelector('.price-input').value = serviceDiv.dataset.price;
                     serviceDiv.parentElement.classList.add('hidden');
@@ -1281,23 +1271,6 @@
                     addDiscountBtn.classList.remove('hidden');
                     discountContainer.classList.add('hidden');
                     calculateComandaTotals();
-                }
-            });
-            
-            comandaModal.addEventListener('focusout', (e) => {
-                if (e.target.classList.contains('item-service-search')) {
-                    const input = e.target;
-                    // Pequeño delay para permitir que el click en el resultado se registre primero
-                    setTimeout(() => {
-                        if (input.value !== input.dataset.selectedName) {
-                            input.value = '';
-                            input.dataset.selectedName = '';
-                            const itemEntry = input.closest('.item-entry');
-                            itemEntry.querySelector('.item-service-id').value = '';
-                            itemEntry.querySelector('.price-input').value = '0';
-                            calculateComandaTotals();
-                        }
-                    }, 200);
                 }
             });
 
@@ -1388,123 +1361,99 @@
                 }
                 
                 let subtotal = 0;
-                let itemsAreValid = true;
-                let invalidItemMessage = '';
+                document.querySelectorAll('#items-list .item-entry').forEach(item => {
+                    subtotal += parseFloat(item.querySelector('.price-input').value) || 0;
+                });
+
+                let discount = null;
+                let discountAmount = 0;
+                const discountItem = document.querySelector('#discount-container .discount-item');
+                if (discountItem) {
+                    const type = discountItem.querySelector('.discount-type-selector').value;
+                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
+                    if (value > 0) {
+                        discount = { type, value };
+                        if (type === 'percentage') {
+                            discountAmount = subtotal * (value / 100);
+                        } else {
+                            discountAmount = value;
+                        }
+                    }
+                }
+                const totalAfterDiscount = subtotal - discountAmount;
+                
+                let totalPaid = 0, totalSurcharges = 0;
+                document.querySelectorAll('#payments-list .payment-item').forEach(item => {
+                    const baseAmount = parseFloat(item.querySelector('.payment-amount-input').value) || 0;
+                    let surchargeForThisPayment = 0;
+                    const surchargeAmount = parseFloat(item.querySelector('.surcharge-amount-input').value) || 0;
+                    const surchargePercent = parseFloat(item.querySelector('.surcharge-percent-input').value) || 0;
+                    if (surchargeAmount > 0) {
+                        surchargeForThisPayment = surchargeAmount;
+                    } else if (surchargePercent > 0) {
+                        surchargeForThisPayment = baseAmount * (surchargePercent / 100);
+                    }
+                    totalSurcharges += surchargeForThisPayment;
+                    totalPaid += baseAmount + surchargeForThisPayment;
+                });
+
+                const finalComandaTotal = totalAfterDiscount + totalSurcharges;
+                const remaining = finalComandaTotal - totalPaid;
+
+                if (remaining > 0.01) {
+                    showToast('La comanda debe estar saldada para poder guardarla.', true);
+                    return;
+                }
+
                 const items = Array.from(document.querySelectorAll('#items-list .item-entry')).map(itemEl => {
                     const type = itemEl.dataset.type;
                     const profesionalId = itemEl.querySelector('.item-profesional-selector')?.value;
+                    const profesional = profesionalesCache.find(p => p.id === profesionalId);
                     const precio = parseFloat(itemEl.querySelector('.price-input').value) || 0;
                     
-                    let itemData = { type, precio };
+                    let itemData = {
+                        type: type,
+                        profesionalId: profesionalId || null,
+                        profesionalNombre: profesional?.nombre ?? null,
+                        precio: precio
+                    };
 
                     if (type === 'servicio') {
                         const servicioId = itemEl.querySelector('.item-service-id').value;
-                        if (!servicioId) { 
-                            itemsAreValid = false; 
-                            invalidItemMessage = 'Hay un servicio que no fue seleccionado de la lista.';
-                        }
+                        const servicio = serviciosCache.find(s => s.id === servicioId);
                         itemData.servicioId = servicioId;
-                        itemData.servicioNombre = itemEl.querySelector('.item-service-search').value;
-                        if (!profesionalId) {
-                            itemsAreValid = false;
-                            invalidItemMessage = 'Cada servicio debe tener un profesional asignado.';
-                        }
-                        itemData.profesionalId = profesionalId;
-                        itemData.profesionalNombre = profesionalesCache.find(p=>p.id === profesionalId)?.nombre;
+                        itemData.servicioNombre = servicio?.nombre ?? 'Desconocido';
                         itemData.isVoucher = itemEl.querySelector('.item-voucher-check').checked;
-                    } else if (type === 'producto') {
-                        const productName = itemEl.querySelector('.item-name-input').value;
-                         if (!productName) {
-                            itemsAreValid = false;
-                            invalidItemMessage = 'El nombre del producto no puede estar vacío.';
-                         }
-                        itemData.servicioNombre = productName;
-                         if (!profesionalId) {
-                            itemsAreValid = false;
-                            invalidItemMessage = 'Cada producto debe tener un profesional asignado.';
+                    } else {
+                        itemData.servicioNombre = itemEl.querySelector('.item-name-input').value;
+                        if (type === 'producto') {
+                            itemData.categoria = 'P';
                         }
-                        itemData.profesionalId = profesionalId;
-                        itemData.profesionalNombre = profesionalesCache.find(p=>p.id === profesionalId)?.nombre;
-                    } else { // 'otro'
-                         const otherName = itemEl.querySelector('.item-name-input').value;
-                         if (!otherName) {
-                            itemsAreValid = false;
-                            invalidItemMessage = 'El concepto de "Otro" no puede estar vacío.';
-                         }
-                        itemData.servicioNombre = otherName;
                     }
-                    subtotal += precio;
                     return itemData;
                 });
 
-                if (!itemsAreValid) {
-                    showToast(invalidItemMessage, true);
-                    return;
-                }
-                
                 if (items.length === 0) {
                     showToast('La comanda debe tener al menos un concepto.', true);
                     return;
                 }
 
-                let paymentsAreValid = true;
                 const pagos = Array.from(document.querySelectorAll('#payments-list .payment-item')).map(itemEl => {
-                    const metodo = itemEl.querySelector('.payment-method-selector').value;
-                    const monto = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
-                    if(!metodo || monto <= 0) paymentsAreValid = false;
-                    
+                    const baseAmount = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
                     let surcharge = 0;
                     const surchargeAmount = parseFloat(itemEl.querySelector('.surcharge-amount-input').value) || 0;
                     const surchargePercent = parseFloat(itemEl.querySelector('.surcharge-percent-input').value) || 0;
                     if (surchargeAmount > 0) {
                         surcharge = surchargeAmount;
                     } else if (surchargePercent > 0) {
-                        surcharge = monto * (surchargePercent / 100);
+                        surcharge = baseAmount * (surchargePercent / 100);
                     }
-                    return { metodo, monto, recargo: surcharge };
+                    return { metodo: itemEl.querySelector('.payment-method-selector').value, monto: baseAmount, recargo: surcharge };
                 });
-
-                if (!paymentsAreValid) {
-                    showToast('Complete todos los campos de cada pago (método y monto).', true);
-                    return;
-                }
-                 if (pagos.length === 0) {
-                    showToast('Debe agregar al menos un medio de pago.', true);
-                    return;
-                }
-
-
-                let discount = null;
-                const discountItem = document.querySelector('#discount-container .discount-item');
-                if (discountItem) {
-                    const type = discountItem.querySelector('.discount-type-selector').value;
-                    const value = parseFloat(discountItem.querySelector('.discount-value-input').value) || 0;
-                    if (value > 0) discount = { type, value };
-                }
                 
-                // Recalcular totales finales para guardar
-                let finalSubtotal = 0;
-                items.forEach(item => finalSubtotal += item.precio);
-
-                let finalDiscountAmount = 0;
-                if (discount) {
-                    if (discount.type === 'percentage') {
-                        finalDiscountAmount = finalSubtotal * (discount.value / 100);
-                    } else {
-                        finalDiscountAmount = discount.value;
-                    }
-                }
-                const totalAfterDiscount = finalSubtotal - finalDiscountAmount;
-                const finalRecargos = pagos.reduce((sum, pago) => sum + pago.recargo, 0);
-                const finalComandaTotal = totalAfterDiscount + finalRecargos;
-                const finalPagado = pagos.reduce((sum, pago) => sum + pago.monto + pago.recargo, 0);
-
-                if (Math.abs(finalComandaTotal - finalPagado) > 0.01) {
-                    showToast('El total pagado no coincide con el total de la comanda. Revise los montos.', true);
-                    return;
-                }
-                
-                const comandaData = { numero: comandaNumero, cliente, items, pagos, discount, total: finalComandaTotal };
+                const comandaData = {
+                    numero: comandaNumero, cliente, items, pagos, discount, total: finalComandaTotal
+                };
 
                 try {
                     if (id) {
@@ -1878,6 +1827,29 @@
                 }
             });
 
+            exportarPdfComisionBtn.addEventListener('click', () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                const profesionalSeleccionado = profesionalesCache.find(p => p.id === comisionProfesionalSelect.value);
+                const fechaInicio = document.getElementById('comision-fecha-inicio').value;
+                const fechaFin = document.getElementById('comision-fecha-fin').value;
+
+                doc.text(`Reporte de Comisiones para ${profesionalSeleccionado?.nombre || 'N/A'}`, 14, 15);
+                doc.setFontSize(10);
+                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
+
+                doc.autoTable({
+                    html: '#comision-report-table',
+                    startY: 25,
+                    theme: 'grid',
+                    headStyles: { fillColor: [31, 41, 55] },
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                });
+
+                doc.save(`comisiones_${profesionalSeleccionado?.nombre}_${fechaInicio}_${fechaFin}.pdf`);
+            });
+
             generarReporteFinanzasBtn.addEventListener('click', async () => {
                 const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
                 const fechaFin = document.getElementById('finanzas-fecha-fin').value;
@@ -1905,9 +1877,6 @@
                         break;
                     case 'pagos':
                         await generarReportePagos(fechaInicio, fechaFin);
-                        break;
-                    case 'resumenFinanciero':
-                        await generarReporteResumenFinanciero(fechaInicio, fechaFin);
                         break;
                     default:
                         showToast('Este reporte aún no está disponible.');
@@ -2118,11 +2087,10 @@
                         <th class="p-2">Medio de Pago</th>
                         <th class="p-2 text-right">Importe</th>
                         <th class="p-2 text-right">Recargo</th>
-                        <th class="p-2 text-right">Total</th>
                     </tr>`;
                     
                     if (comandasSnapshot.empty) {
-                        finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
+                        finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No se encontraron pagos.</td></tr>`;
                         finanzasTableFoot.innerHTML = '';
                         return;
                     }
@@ -2145,19 +2113,15 @@
 
                     let totalImporte = 0;
                     let totalRecargo = 0;
-                    let totalGeneral = 0;
                     finanzasTableBody.innerHTML = reportData.map(row => {
-                        const totalPago = row.importe + row.recargo;
                         totalImporte += row.importe;
                         totalRecargo += row.recargo;
-                        totalGeneral += totalPago;
                         return `<tr>
                             <td class="p-2 border-t border-gray-700">${row.numero}</td>
                             <td class="p-2 border-t border-gray-700">${row.fecha}</td>
                             <td class="p-2 border-t border-gray-700">${row.metodo}</td>
                             <td class="p-2 border-t border-gray-700 text-right">$${row.importe.toLocaleString('es-AR')}</td>
                             <td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${row.recargo.toLocaleString('es-AR')}</td>
-                            <td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalPago.toLocaleString('es-AR')}</td>
                         </tr>`;
                     }).join('');
 
@@ -2165,129 +2129,57 @@
                         <td colspan="3" class="p-2 font-bold">TOTALES</td>
                         <td class="p-2 text-right font-bold">$${totalImporte.toLocaleString('es-AR')}</td>
                         <td class="p-2 text-right font-bold text-yellow-400">$${totalRecargo.toLocaleString('es-AR')}</td>
-                        <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
                     </tr>`;
 
                 } catch (error) {
                     log(`Error generando reporte de pagos: ${error.message}`);
                     showToast('No se pudo generar el reporte de pagos.', true);
-                    finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                    finanzasTableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
 
-            async function generarReporteResumenFinanciero(fechaInicio, fechaFin) {
-                try {
-                    const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
-                    const comandasSnapshot = await getDocs(qComandas);
-
-                    let totalFacturadoSinDescuento = 0, totalDescuentos = 0, totalRecargos = 0, totalPagos = 0;
-                    const pagosPorMedio = {};
-
-                    comandasSnapshot.forEach(doc => {
-                        const comanda = doc.data();
-                        const subtotalItems = (comanda.items || []).reduce((sum, item) => sum + (item.precio || 0), 0);
-                        totalFacturadoSinDescuento += subtotalItems;
-
-                        if (comanda.discount && comanda.discount.value > 0) {
-                            totalDescuentos += comanda.discount.type === 'percentage' ? subtotalItems * (comanda.discount.value / 100) : comanda.discount.value;
-                        }
-
-                        (comanda.pagos || []).forEach(pago => {
-                            const totalPagoIndividual = (pago.monto || 0) + (pago.recargo || 0);
-                            totalRecargos += pago.recargo || 0;
-                            pagosPorMedio[pago.metodo] = (pagosPorMedio[pago.metodo] || 0) + totalPagoIndividual;
-                            totalPagos += totalPagoIndividual;
-                        });
-                    });
-
-                    const netoVentas = totalFacturadoSinDescuento - totalDescuentos;
-                    const totalFacturacion = netoVentas + totalRecargos;
-
-                    finanzasTableHead.innerHTML = `<tr><th class="p-2">Concepto</th><th class="p-2 text-right">Total</th></tr>`;
-                    
-                    let bodyHtml = `<tr class="summary-header-row"><td colspan="2" class="p-2">Ventas</td></tr>`;
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total facturado por comandas</td><td class="p-2 border-t border-gray-700 text-right">$${totalFacturadoSinDescuento.toLocaleString('es-AR')}</td></tr>`;
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total de descuentos</td><td class="p-2 border-t border-gray-700 text-right text-orange-400">-$${totalDescuentos.toLocaleString('es-AR')}</td></tr>`;
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Neto de ventas</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${netoVentas.toLocaleString('es-AR')}</td></tr>`;
-                    
-                    bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Recargos</td></tr>`;
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total ingresos por recargos</td><td class="p-2 border-t border-gray-700 text-right text-yellow-400">$${totalRecargos.toLocaleString('es-AR')}</td></tr>`;
-
-                    bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Total Facturado</td></tr>`;
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de facturación</td><td class="p-2 border-t border-gray-700 text-right font-semibold">$${totalFacturacion.toLocaleString('es-AR')}</td></tr>`;
-
-                    bodyHtml += `<tr class="summary-header-row"><td colspan="2" class="p-2">Pagos</td></tr>`;
-
-                    Object.keys(pagosPorMedio).sort().forEach(metodo => {
-                        bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700">Total por ${metodo}</td><td class="p-2 border-t border-gray-700 text-right">$${pagosPorMedio[metodo].toLocaleString('es-AR')}</td></tr>`;
-                    });
-                    
-                    bodyHtml += `<tr><td class="p-2 pl-6 border-t border-gray-700 font-semibold">Total de pagos</td><td class="p-2 border-t border-gray-700 text-right font-semibold text-green-400">$${totalPagos.toLocaleString('es-AR')}</td></tr>`;
-
-                    finanzasTableBody.innerHTML = bodyHtml;
-                    finanzasTableFoot.innerHTML = '';
-
-                } catch (error) {
-                    log(`Error generando resumen financiero: ${error.message}`);
-                    showToast('No se pudo generar el resumen.', true);
-                    finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
-                }
-            }
-
-
-            // --- Lógica de Exportación ---
-            function exportToPdf(tableId, reportName, orientation = 'p') {
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF(orientation, 'pt', 'a4');
-                const fechaInicio = document.getElementById('comision-fecha-inicio').value || document.getElementById('finanzas-fecha-inicio').value;
-                const fechaFin = document.getElementById('comision-fecha-fin').value || document.getElementById('finanzas-fecha-fin').value;
-
-                doc.text(`Reporte: ${reportName}`, 40, 40);
-                doc.setFontSize(10);
-                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 40, 55);
-
-                doc.autoTable({
-                    html: `#${tableId}`,
-                    startY: 65,
-                    theme: 'grid',
-                    headStyles: { fillColor: [31, 41, 55] },
-                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
-                    didParseCell: function(data) {
-                        if (data.row.raw.classList.contains('summary-header-row')) {
-                            data.cell.styles.fillColor = '#374151';
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                    }
-                });
-                doc.save(`reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.pdf`);
-            }
-            
-            function exportToXlsx(tableId, reportName) {
-                const table = document.getElementById(tableId);
-                const wb = XLSX.utils.table_to_book(table, { sheet: reportName });
-                const fechaInicio = document.getElementById('comision-fecha-inicio').value || document.getElementById('finanzas-fecha-inicio').value;
-                const fechaFin = document.getElementById('comision-fecha-fin').value || document.getElementById('finanzas-fecha-fin').value;
-                XLSX.writeFile(wb, `reporte_${reportName.replace(/\s/g, '_')}_${fechaInicio}_${fechaFin}.xlsx`);
-            }
-
-            exportarPdfComisionBtn.addEventListener('click', () => {
-                exportToPdf('comision-report-table', 'Comisiones');
-            });
 
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
+                const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                exportToPdf('finanzas-report-table', reportName);
+
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                    showToast('Función de exportar no disponible para este reporte aún.');
+                    return;
+                }
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+
+                doc.text(`Reporte: ${reportName}`, 14, 15);
+                doc.setFontSize(10);
+                doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
+
+                doc.autoTable({
+                    html: '#finanzas-report-table',
+                    startY: 25,
+                    theme: 'grid',
+                    headStyles: { fillColor: [31, 41, 55] },
+                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                });
+                doc.save(`reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.pdf`);
             });
 
             exportarXlsxFinanzasBtn.addEventListener('click', () => {
-                 const select = document.getElementById('finanzas-reporte-select');
+                const select = document.getElementById('finanzas-reporte-select');
+                const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                let tableId = 'finanzas-report-table';
-                if(document.getElementById('comisiones-view').checkVisibility()) {
-                    tableId = 'comision-report-table';
+                if (!['detalleComandas', 'ventas', 'gastos', 'pagos'].includes(tipoReporte)) {
+                    showToast('Función de exportar no disponible para este reporte aún.');
+                    return;
                 }
-                exportToXlsx(tableId, reportName);
+                const table = document.getElementById('finanzas-report-table');
+                const wb = XLSX.utils.table_to_book(table, { sheet: reportName });
+                const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
+                const fechaFin = document.getElementById('finanzas-fecha-fin').value;
+                XLSX.writeFile(wb, `reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.xlsx`);
             });
 
             retirarDineroBtn.addEventListener('click', async () => {
@@ -2342,4 +2234,3 @@
     </script>
 </body>
 </html>
-
