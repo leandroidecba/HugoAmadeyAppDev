@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.13.0</title>
+    <title>Hugo Amadey Admin App v0.13.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -184,7 +184,10 @@
                                     </tfoot>
                                 </table>
                             </div>
-                            <button id="exportar-pdf-comision-btn" class="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                            <div class="mt-4 grid grid-cols-2 gap-4">
+                                <button id="exportar-pdf-comision-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                                <button id="ver-tabla-comision-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg">Ver Tabla</button>
+                            </div>
                         </div>
                     </div>
 
@@ -220,9 +223,10 @@
                                     </tfoot>
                                 </table>
                             </div>
-                            <div class="mt-4 grid grid-cols-2 gap-4">
-                               <button id="exportar-pdf-finanzas-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                               <button id="exportar-xlsx-finanzas-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg">Exportar XLSX</button>
+                            <div class="mt-4 grid grid-cols-3 gap-2">
+                               <button id="exportar-pdf-finanzas-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">PDF</button>
+                               <button id="exportar-xlsx-finanzas-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg">XLSX</button>
+                               <button id="ver-tabla-finanzas-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg">Ver Tabla</button>
                             </div>
                         </div>
                     </div>
@@ -580,6 +584,7 @@
             const comisionTotalFacturado = document.getElementById('comision-total-facturado');
             const comisionTotalComision = document.getElementById('comision-total-comision');
             const exportarPdfComisionBtn = document.getElementById('exportar-pdf-comision-btn');
+            const verTablaComisionBtn = document.getElementById('ver-tabla-comision-btn');
             const generarReporteFinanzasBtn = document.getElementById('generar-reporte-finanzas-btn');
             const finanzasReporteContainer = document.getElementById('finanzas-reporte-container');
             const finanzasTableHead = document.getElementById('finanzas-table-head');
@@ -587,6 +592,7 @@
             const finanzasTableFoot = document.getElementById('finanzas-table-foot');
             const exportarPdfFinanzasBtn = document.getElementById('exportar-pdf-finanzas-btn');
             const exportarXlsxFinanzasBtn = document.getElementById('exportar-xlsx-finanzas-btn');
+            const verTablaFinanzasBtn = document.getElementById('ver-tabla-finanzas-btn');
             const installAppBtn = document.getElementById('install-app-btn');
             const comandaScrollableContent = comandaModal.querySelector('.custom-scrollbar');
 
@@ -617,6 +623,55 @@
                 setTimeout(() => {
                     element.scrollTop = element.scrollHeight;
                 }, 100); 
+            }
+             function viewTableInNewWindow(tableId) {
+                const table = document.getElementById(tableId);
+                if (!table) {
+                    showToast('No se encontró la tabla para visualizar.', true);
+                    return;
+                }
+
+                const tableHTML = table.outerHTML;
+                const newWindow = window.open('', '_blank');
+                newWindow.document.write(`
+                    <html>
+                        <head>
+                            <title>Vista de Tabla</title>
+                            <script src="https://cdn.tailwindcss.com"><\/script>
+                            <style>
+                                body { 
+                                    background-color: #121212; 
+                                    color: white; 
+                                    font-family: Inter, sans-serif;
+                                    padding: 1rem;
+                                }
+                                table { 
+                                    width: 100%;
+                                    border-collapse: collapse;
+                                    font-size: 0.875rem;
+                                }
+                                th, td {
+                                    border: 1px solid #4A5568;
+                                    padding: 8px;
+                                    text-align: left;
+                                    vertical-align: top;
+                                }
+                                thead {
+                                    background-color: #374151;
+                                }
+                                 tfoot {
+                                    background-color: #111827;
+                                    font-weight: bold;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <h1 class="text-xl font-bold mb-4">Reporte</h1>
+                            ${tableHTML}
+                        </body>
+                    </html>
+                `);
+                newWindow.document.close();
             }
 
             // --- LÓGICA DE PWA (INSTALACIÓN Y OFFLINE) ---
@@ -1855,6 +1910,9 @@
 
                 doc.save(`comisiones_${profesionalSeleccionado?.nombre}_${fechaInicio}_${fechaFin}.pdf`);
             });
+            
+            verTablaComisionBtn.addEventListener('click', () => viewTableInNewWindow('comision-report-table'));
+
 
             generarReporteFinanzasBtn.addEventListener('click', async () => {
                 const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
@@ -2350,6 +2408,9 @@
                 const fechaFin = document.getElementById('finanzas-fecha-fin').value;
                 XLSX.writeFile(wb, `reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.xlsx`);
             });
+            
+            verTablaFinanzasBtn.addEventListener('click', () => viewTableInNewWindow('finanzas-report-table'));
+
 
         });
     </script>
