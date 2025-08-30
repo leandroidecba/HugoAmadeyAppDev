@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.9.6</title>
+    <title>Hugo Amadey Admin App v0.11.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -1274,6 +1274,28 @@
                 }
             });
 
+            // CHANGE: Add focusout event listener to handle service input clearing
+            comandaModal.addEventListener('focusout', (e) => {
+                if (e.target.classList.contains('item-service-search')) {
+                    const itemEntry = e.target.closest('.item-entry');
+                    const serviceIdInput = itemEntry.querySelector('.item-service-id');
+                    const searchInput = e.target;
+                    const resultsContainer = itemEntry.querySelector('.search-results');
+
+                    // Small delay to allow click on results to register before hiding
+                    setTimeout(() => {
+                        resultsContainer.classList.add('hidden');
+                        
+                        // If after the delay, no valid service is selected (ID is empty), clear the input and the price.
+                        if (!serviceIdInput.value) {
+                            searchInput.value = '';
+                            itemEntry.querySelector('.price-input').value = ''; // Clear price
+                            calculateComandaTotals(); // Recalculate
+                        }
+                    }, 200); // 200ms delay to allow click to register
+                }
+            });
+
             function calculateComandaTotals() {
                 let subtotal = 0;
                 document.querySelectorAll('#items-list .item-entry').forEach(item => {
@@ -1360,6 +1382,37 @@
                     return;
                 }
                 
+                // --- VALIDATION BLOCK ---
+                let validationError = null;
+
+                const itemEntries = document.querySelectorAll('#items-list .item-entry');
+                if (itemEntries.length === 0) {
+                    validationError = 'La comanda debe tener al menos un concepto.';
+                } else {
+                    for (const [index, itemEl] of itemEntries.entries()) {
+                        if (itemEl.dataset.type === 'servicio' && !itemEl.querySelector('.item-service-id').value) {
+                            validationError = `Debes seleccionar un servicio de la lista para el concepto #${index + 1}.`;
+                            break;
+                        }
+                    }
+                }
+
+                if (!validationError) {
+                    const paymentEntries = document.querySelectorAll('#payments-list .payment-item');
+                    for (const [index, itemEl] of paymentEntries.entries()) {
+                        if (!itemEl.querySelector('.payment-method-selector').value) {
+                            validationError = `Debes seleccionar un medio de pago para el pago #${index + 1}.`;
+                            break;
+                        }
+                    }
+                }
+
+                if (validationError) {
+                    showToast(validationError, true);
+                    return;
+                }
+                // --- END VALIDATION BLOCK ---
+
                 let subtotal = 0;
                 document.querySelectorAll('#items-list .item-entry').forEach(item => {
                     subtotal += parseFloat(item.querySelector('.price-input').value) || 0;
@@ -1432,11 +1485,6 @@
                     }
                     return itemData;
                 });
-
-                if (items.length === 0) {
-                    showToast('La comanda debe tener al menos un concepto.', true);
-                    return;
-                }
 
                 const pagos = Array.from(document.querySelectorAll('#payments-list .payment-item')).map(itemEl => {
                     const baseAmount = parseFloat(itemEl.querySelector('.payment-amount-input').value) || 0;
