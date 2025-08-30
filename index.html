@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.14.0</title>
+    <title>Hugo Amadey Admin App v0.15.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#121212"/>
     <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/leandroidecba/HugoAmadeyApp/main/logo-192.png">
     
-    <!-- Librerías para Reportes -->
+    <!-- Librerías para Reportes y Gráficos -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"></script>
+
     <style>
         body { font-family: 'Inter', sans-serif; }
         .modal-container { visibility: hidden; opacity: 0; transition: visibility 0s 300ms, opacity 300ms ease-in-out; }
@@ -59,6 +61,9 @@
         .table-container {
             max-height: 40vh;
             overflow: auto;
+        }
+        .chart-container {
+            height: 40vh;
         }
     </style>
 </head>
@@ -200,33 +205,34 @@
                                 <input type="date" id="finanzas-fecha-fin" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
                             </div>
                             <select id="finanzas-reporte-select" class="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm">
-                                <option value="comandas">Comandas</option>
-                                <option value="detalleComandas">Detalle de Items</option>
-                                <option value="ventas">Ventas</option>
-                                <option value="gastos">Gastos</option>
-                                <option value="pagos">Pagos</option>
-                                <option value="resumenFinanciero">Resumen Financiero</option>
+                                <optgroup label="Tablas">
+                                    <option value="comandas">Comandas</option>
+                                    <option value="detalleComandas">Detalle de Items</option>
+                                    <option value="ventas">Ventas</option>
+                                    <option value="gastos">Gastos</option>
+                                    <option value="pagos">Pagos</option>
+                                    <option value="resumenFinanciero">Resumen Financiero</option>
+                                </optgroup>
+                                <optgroup label="Gráficos">
+                                    <option value="graficoComandas">Comandas por día</option>
+                                </optgroup>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
                         </div>
                         <div id="finanzas-reporte-container" class="hidden">
-                            <div class="table-container custom-scrollbar">
+                            <div id="table-view" class="table-container custom-scrollbar">
                                 <table id="finanzas-report-table" class="w-full text-sm text-left whitespace-nowrap">
-                                    <thead id="finanzas-table-head" class="bg-gray-700 sticky top-0">
-                                        <!-- Header se genera dinámicamente -->
-                                    </thead>
-                                    <tbody id="finanzas-table-body" class="bg-gray-800">
-                                        <!-- Body se genera dinámicamente -->
-                                    </tbody>
-                                    <tfoot id="finanzas-table-foot" class="bg-gray-900 sticky bottom-0">
-                                        <!-- Footer se genera dinámicamente -->
-                                    </tfoot>
+                                    <thead id="finanzas-table-head" class="bg-gray-700 sticky top-0"></thead>
+                                    <tbody id="finanzas-table-body" class="bg-gray-800"></tbody>
+                                    <tfoot id="finanzas-table-foot" class="bg-gray-900 sticky bottom-0"></tfoot>
                                 </table>
                             </div>
-                            <div class="mt-4 grid grid-cols-3 gap-2">
+                            <div id="chart-view" class="chart-container hidden"></div>
+                            <div id="finanzas-export-buttons" class="mt-4 grid grid-cols-3 gap-2">
                                <button id="exportar-pdf-finanzas-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">PDF</button>
                                <button id="exportar-xlsx-finanzas-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg">XLSX</button>
                                <button id="ver-tabla-finanzas-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-lg">Ver Tabla</button>
+                               <button id="ver-grafico-finanzas-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg hidden">Ver Gráfico</button>
                             </div>
                         </div>
                     </div>
@@ -593,9 +599,13 @@
             const finanzasTableHead = document.getElementById('finanzas-table-head');
             const finanzasTableBody = document.getElementById('finanzas-table-body');
             const finanzasTableFoot = document.getElementById('finanzas-table-foot');
+            const tableView = document.getElementById('table-view');
+            const chartView = document.getElementById('chart-view');
+            const finanzasExportButtons = document.getElementById('finanzas-export-buttons');
             const exportarPdfFinanzasBtn = document.getElementById('exportar-pdf-finanzas-btn');
             const exportarXlsxFinanzasBtn = document.getElementById('exportar-xlsx-finanzas-btn');
             const verTablaFinanzasBtn = document.getElementById('ver-tabla-finanzas-btn');
+            const verGraficoFinanzasBtn = document.getElementById('ver-grafico-finanzas-btn');
             const installAppBtn = document.getElementById('install-app-btn');
             const comandaScrollableContent = comandaModal.querySelector('.custom-scrollbar');
 
@@ -609,6 +619,7 @@
             let currentUserRole = null;
             let selectedRoleForLogin = null;
             let deferredInstallPrompt = null;
+            let finanzasChart = null;
             
             // --- FUNCIONES DE UTILIDAD ---
             function log(message) {
@@ -672,6 +683,34 @@
                         <body>
                             <h1 class="text-xl font-bold mb-4">Reporte</h1>
                             ${tableHTML}
+                        </body>
+                    </html>
+                `);
+                newWindow.document.close();
+            }
+
+            function viewChartInNewWindow(chartInstance) {
+                if (!chartInstance) {
+                     showToast('No hay gráfico para visualizar.', true);
+                    return;
+                }
+                 const option = chartInstance.getOption();
+                 const newWindow = window.open('', '_blank');
+                 newWindow.document.write(`
+                    <html>
+                        <head>
+                            <title>Vista de Gráfico</title>
+                             <style>body { margin: 0; padding: 0; background-color: #121212; }</style>
+                        </head>
+                        <body>
+                            <div id="main" style="width: 100vw; height: 100vh;"></div>
+                            <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"><\/script>
+                            <script type="text/javascript">
+                                var myChart = echarts.init(document.getElementById('main'));
+                                var option = ${JSON.stringify(option)};
+                                myChart.setOption(option);
+                                window.addEventListener('resize', () => myChart.resize());
+                            <\/script>
                         </body>
                     </html>
                 `);
@@ -1996,9 +2035,24 @@
                 }
 
                 finanzasReporteContainer.classList.remove('hidden');
-                finanzasTableHead.innerHTML = '';
-                finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
-                finanzasTableFoot.innerHTML = '';
+                
+                const isChart = tipoReporte.startsWith('grafico');
+                tableView.classList.toggle('hidden', isChart);
+                chartView.classList.toggle('hidden', !isChart);
+                exportarXlsxFinanzasBtn.classList.toggle('hidden', isChart);
+                verTablaFinanzasBtn.classList.toggle('hidden', isChart);
+                verGraficoFinanzasBtn.classList.toggle('hidden', !isChart);
+                finanzasExportButtons.classList.replace(isChart ? 'grid-cols-3' : 'grid-cols-2', isChart ? 'grid-cols-2' : 'grid-cols-3');
+
+
+                if (isChart) {
+                   chartView.innerHTML = '<p class="text-center text-gray-400">Generando gráfico...</p>';
+                } else {
+                    finanzasTableHead.innerHTML = '';
+                    finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
+                    finanzasTableFoot.innerHTML = '';
+                }
+
 
                 switch (tipoReporte) {
                     case 'comandas':
@@ -2018,6 +2072,9 @@
                         break;
                     case 'resumenFinanciero':
                         await generarReporteResumenFinanciero(fechaInicio, fechaFin);
+                        break;
+                    case 'graficoComandas':
+                        await generarGraficoComandasPorDia(fechaInicio, fechaFin);
                         break;
                     default:
                         showToast('Este reporte aún no está disponible.');
@@ -2487,19 +2544,82 @@
                     finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
+            
+            async function generarGraficoComandasPorDia(fechaInicio, fechaFin) {
+                try {
+                    const start = new Date(fechaInicio + 'T00:00:00');
+                    const end = new Date(fechaFin + 'T00:00:00');
+                    const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+                    const prevEnd = new Date(start);
+                    prevEnd.setDate(prevEnd.getDate() - 1);
+                    const prevStart = new Date(prevEnd);
+                    prevStart.setDate(prevStart.getDate() - (diffDays - 1) );
+                    
+                    const prevFechaInicio = prevStart.toISOString().slice(0, 10);
+                    const prevFechaFin = prevEnd.toISOString().slice(0, 10);
+
+                    const qActual = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const qPrevio = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", prevFechaInicio), where("fecha", "<=", prevFechaFin));
+
+                    const [actualSnapshot, previoSnapshot] = await Promise.all([getDocs(qActual), getDocs(qPrevio)]);
+
+                    const comandasPorDia = {};
+                    actualSnapshot.forEach(doc => {
+                        const fecha = doc.data().fecha;
+                        comandasPorDia[fecha] = (comandasPorDia[fecha] || 0) + 1;
+                    });
+                    
+                    const comandasPorDiaPrevio = {};
+                    previoSnapshot.forEach(doc => {
+                        const fecha = doc.data().fecha;
+                        comandasPorDiaPrevio[fecha] = (comandasPorDiaPrevio[fecha] || 0) + 1;
+                    });
+                    
+                    const labels = Object.keys(comandasPorDia).sort();
+                    const dataActual = labels.map(label => comandasPorDia[label]);
+                    const dataPrevia = labels.map((label, index) => {
+                         const prevDate = new Date(label + 'T00:00:00');
+                         prevDate.setDate(prevDate.getDate() - diffDays);
+                         const prevDateString = prevDate.toISOString().slice(0, 10);
+                         return comandasPorDiaPrevio[prevDateString] || 0;
+                    });
+
+
+                    if (finanzasChart) finanzasChart.dispose();
+                    
+                    chartView.innerHTML = ''; 
+                    finanzasChart = echarts.init(chartView, 'dark');
+
+                    const option = {
+                        backgroundColor: '#1E1E1E',
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['Período Actual', 'Período Anterior'], textStyle: { color: '#fff' } },
+                        xAxis: { type: 'category', data: labels, axisLabel: { color: '#fff' } },
+                        yAxis: { type: 'value', axisLabel: { color: '#fff' } },
+                        series: [
+                            { name: 'Período Actual', type: 'line', smooth: true, data: dataActual, itemStyle: { color: '#3b82f6' }, label: { show: true, position: 'top', color: '#fff' } },
+                            { name: 'Período Anterior', type: 'line', smooth: true, lineStyle: { type: 'dashed' }, data: dataPrevia, itemStyle: { color: '#9ca3af' }, label: { show: true, position: 'bottom', color: '#ccc' } }
+                        ]
+                    };
+                    finanzasChart.setOption(option);
+
+                } catch (error) {
+                    log(`Error al generar gráfico: ${error.message}`);
+                    showToast('No se pudo generar el gráfico.', true);
+                }
+            }
 
 
             exportarPdfFinanzasBtn.addEventListener('click', () => {
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
+                const isChart = tipoReporte.startsWith('grafico');
 
-                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
-                    showToast('Función de exportar no disponible para este reporte aún.');
-                    return;
-                }
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
+                const doc = new jsPDF(isChart ? { orientation: 'landscape' } : {});
+                
                 const fechaInicio = document.getElementById('finanzas-fecha-inicio').value;
                 const fechaFin = document.getElementById('finanzas-fecha-fin').value;
 
@@ -2507,13 +2627,22 @@
                 doc.setFontSize(10);
                 doc.text(`Período: ${fechaInicio} al ${fechaFin}`, 14, 20);
 
-                doc.autoTable({
-                    html: '#finanzas-report-table',
-                    startY: 25,
-                    theme: 'grid',
-                    headStyles: { fillColor: [31, 41, 55] },
-                    footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
-                });
+                if (isChart && finanzasChart) {
+                    const imgData = finanzasChart.getDataURL({
+                        pixelRatio: 2,
+                        backgroundColor: '#1E1E1E'
+                    });
+                    doc.addImage(imgData, 'JPEG', 15, 40, 267, 150);
+                } else {
+                     doc.autoTable({
+                        html: '#finanzas-report-table',
+                        startY: 25,
+                        theme: 'grid',
+                        headStyles: { fillColor: [31, 41, 55] },
+                        footStyles: { fillColor: [17, 24, 39], textColor: [255, 255, 255], fontStyle: 'bold' }
+                    });
+                }
+                
                 doc.save(`reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.pdf`);
             });
 
@@ -2533,6 +2662,7 @@
             });
             
             verTablaFinanzasBtn.addEventListener('click', () => viewTableInNewWindow('finanzas-report-table'));
+            verGraficoFinanzasBtn.addEventListener('click', () => viewChartInNewWindow(finanzasChart));
 
 
         });
