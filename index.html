@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.13.5</title>
+    <title>Hugo Amadey Admin App v0.14.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -2028,8 +2028,10 @@
             
             async function generarReporteResumenFinanciero(fechaInicio, fechaFin) {
                 try {
-                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
-                    const comandasSnapshot = await getDocs(q);
+                    const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const qGastos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("type", "==", "gasto"), where("date", ">=", fechaInicio), where("date", "<=", fechaFin));
+                    
+                    const [comandasSnapshot, gastosSnapshot] = await Promise.all([getDocs(qComandas), getDocs(qGastos)]);
 
                     let totalFacturadoBruto = 0;
                     let totalDescuentos = 0;
@@ -2058,6 +2060,31 @@
                     const netoVentas = totalFacturadoBruto - totalDescuentos;
                     const totalFacturacion = netoVentas + totalRecargos;
 
+                    let gastosOperativos = 0;
+                    let gastosAdministrativosSinSueldos = 0;
+                    let gastosSueldos = 0;
+                    let sueldoHugo = 0;
+                    const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+
+                    gastosSnapshot.forEach(doc => {
+                        const gasto = doc.data();
+                        if (gasto.categoria && gasto.categoria.toLowerCase() === 'sueldos') {
+                            if (gasto.concept && gasto.concept.toLowerCase().includes('hugo')) {
+                                sueldoHugo += gasto.amount || 0;
+                            } else {
+                                gastosSueldos += gasto.amount || 0;
+                            }
+                        } else if (categoriasOperativas.includes(gasto.categoria)) {
+                            gastosOperativos += gasto.amount || 0;
+                        } else {
+                            gastosAdministrativosSinSueldos += gasto.amount || 0;
+                        }
+                    });
+
+                    const totalGastosOpYAdmin = gastosOperativos + gastosAdministrativosSinSueldos + gastosSueldos;
+                    const utilidades = totalFacturacion - totalGastosOpYAdmin;
+                    const rentabilidadNeta = totalFacturacion - totalGastosOpYAdmin - sueldoHugo;
+
                     let reportHTML = `
                         <tr><td class="p-2 font-bold" colspan="2">Ventas</td></tr>
                         <tr><td class="p-2 pl-6">Total facturado por comandas (sin descuento)</td><td class="p-2 text-right">$${totalFacturadoBruto.toLocaleString('es-AR')}</td></tr>
@@ -2080,6 +2107,21 @@
                     }
                     const totalPagos = totalPagosAgregados + totalRecargos;
                     reportHTML += `<tr><td class="p-2 pl-6 font-semibold">Total de pagos</td><td class="p-2 text-right font-semibold">$${totalPagos.toLocaleString('es-AR')}</td></tr>`;
+                    
+                    reportHTML += `
+                        <tr><td class="p-2 font-bold" colspan="2">Gastos</td></tr>
+                        <tr><td class="p-2 pl-6">Gastos Operativos</td><td class="p-2 text-right text-red-400">-$${gastosOperativos.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6">Gastos Administrativos (excepto sueldos)</td><td class="p-2 text-right text-red-400">-$${gastosAdministrativosSinSueldos.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6">Gastos por Sueldos</td><td class="p-2 text-right text-red-400">-$${gastosSueldos.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6 font-semibold">Total de Gastos Operativos y Administrativos</td><td class="p-2 text-right font-semibold text-red-400">-$${totalGastosOpYAdmin.toLocaleString('es-AR')}</td></tr>
+
+                        <tr><td class="p-2 font-bold" colspan="2">Sueldo Hugo</td></tr>
+                        <tr><td class="p-2 pl-6">Sueldo Hugo</td><td class="p-2 text-right text-red-400">-$${sueldoHugo.toLocaleString('es-AR')}</td></tr>
+
+                        <tr><td class="p-2 font-bold" colspan="2">Rentabilidad</td></tr>
+                        <tr><td class="p-2 pl-6">Utilidades</td><td class="p-2 text-right">$${utilidades.toLocaleString('es-AR')}</td></tr>
+                        <tr><td class="p-2 pl-6 font-semibold">Rentabilidad Neta</td><td class="p-2 text-right font-semibold">$${rentabilidadNeta.toLocaleString('es-AR')}</td></tr>
+                    `;
 
 
                     finanzasTableHead.innerHTML = '';
