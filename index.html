@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.11.1</title>
+    <title>Hugo Amadey Admin App v0.11.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -98,10 +98,6 @@
                     <section id="start-day-card" class="bg-[#1E1E1E] p-4 rounded-xl flex items-center justify-between">
                         <div><h2 class="font-semibold">Caja del Día</h2><p id="caja-status-text" class="text-sm text-gray-400">Aún no has iniciado la caja hoy.</p></div>
                         <button id="iniciar-caja-btn" class="bg-white text-black text-sm font-bold py-2 px-4 rounded-lg">Iniciar Caja</button>
-                    </section>
-                    <section id="withdraw-card" class="bg-[#1E1E1E] p-4 rounded-xl flex items-center justify-between">
-                        <div><h2 class="font-semibold">Retiros de Caja</h2><p id="retiros-status-text" class="text-sm text-gray-400">Total retirado hoy: $0</p></div>
-                        <button id="retirar-dinero-btn" class="bg-yellow-500 text-black text-sm font-bold py-2 px-4 rounded-lg">Retirar</button>
                     </section>
                     <section class="grid grid-cols-2 gap-4">
                         <div id="dashboard-total-facturado-card" class="bg-[#1E1E1E] p-4 rounded-xl col-span-2"><h2 class="text-sm font-medium text-gray-400">TOTAL FACTURADO (SIN RECARGOS)</h2><p id="dashboard-total-ingresos" class="text-3xl font-semibold mt-2">$0</p></div>
@@ -470,31 +466,6 @@
             </footer>
         </div>
     </div>
-    <!-- Modal para Retiros -->
-    <div id="retiro-modal" class="modal-container fixed inset-0 bg-black bg-opacity-70 flex items-end z-50">
-        <div class="modal-content bg-[#1E1E1E] w-full max-w-md mx-auto rounded-t-2xl flex flex-col h-[75vh]">
-            <header class="flex-shrink-0 p-4 border-b border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-bold">Gestionar Retiros</h2>
-                <button id="close-retiro-modal-btn" class="text-gray-400 hover:text-white"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </header>
-            <div class="flex-grow p-4 overflow-y-auto custom-scrollbar">
-                <h3 class="text-lg font-semibold text-gray-300 mb-2">Retiros de Hoy</h3>
-                <div id="retiros-list" class="space-y-2">
-                    <p class="text-gray-500">No hay retiros registrados hoy.</p>
-                </div>
-            </div>
-            <footer class="p-4 border-t border-gray-700 bg-[#121212]">
-                <form id="retiro-form" class="flex items-center gap-2">
-                    <div class="relative flex-grow">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">$</span>
-                        <input type="number" id="retiro-monto" placeholder="Monto a retirar" class="w-full bg-gray-800 rounded-lg pl-7 pr-3 py-2" required>
-                    </div>
-                    <button id="save-retiro-btn" class="bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg">Añadir</button>
-                </form>
-            </footer>
-        </div>
-    </div>
-
 
     <!-- Firebase SDK -->
     <script type="module">
@@ -616,12 +587,6 @@
             const exportarPdfFinanzasBtn = document.getElementById('exportar-pdf-finanzas-btn');
             const exportarXlsxFinanzasBtn = document.getElementById('exportar-xlsx-finanzas-btn');
             const installAppBtn = document.getElementById('install-app-btn');
-            const retirarDineroBtn = document.getElementById('retirar-dinero-btn');
-            const retiroModal = document.getElementById('retiro-modal');
-            const closeRetiroModalBtn = document.getElementById('close-retiro-modal-btn');
-            const retirosList = document.getElementById('retiros-list');
-            const retiroForm = document.getElementById('retiro-form');
-            const retiroMontoInput = document.getElementById('retiro-monto');
             const comandaScrollableContent = comandaModal.querySelector('.custom-scrollbar');
 
             // --- ESTADO Y CACHÉ GLOBAL ---
@@ -876,7 +841,7 @@
             }
 
             function updateDashboard(comandas, movimientos){
-                let totalIngresos = 0, ingresosEfectivo = 0, ingresosDigital = 0, gastosOperativos = 0, aperturaCaja = 0, totalRetiros = 0;
+                let totalIngresos = 0, ingresosEfectivo = 0, ingresosDigital = 0, gastosOperativos = 0, aperturaCaja = 0;
                 let gastosDeCaja = 0;
 
                 const aperturaDoc = movimientos.find(m => m.type === 'apertura');
@@ -886,8 +851,6 @@
                     document.getElementById('caja-status-text').textContent = `Iniciada con $${aperturaCaja.toLocaleString('es-AR')}`;
                     iniciarCajaBtn.textContent = 'Modificar Caja';
                 }
-                movimientos.filter(m => m.type === 'retiro').forEach(r => totalRetiros += r.amount);
-                document.getElementById('retiros-status-text').textContent = `Total retirado hoy: $${totalRetiros.toLocaleString('es-AR')}`;
 
                 const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
                 const mediosDigitales = mediosDePagoCache.filter(mp => mp.esDigital).map(mp => mp.nombre);
@@ -910,7 +873,7 @@
                     .filter(gasto => gasto.deCaja === true)
                     .reduce((sum, gasto) => sum + gasto.amount, 0);
                 
-                const balance = aperturaCaja + ingresosEfectivo - gastosDeCaja - totalRetiros;
+                const balance = aperturaCaja + ingresosEfectivo - gastosDeCaja;
 
                 document.getElementById('dashboard-total-ingresos').textContent = `$${totalIngresos.toLocaleString('es-AR')}`;
                 document.getElementById('dashboard-ingresos-efectivo').textContent = `$${ingresosEfectivo.toLocaleString('es-AR')}`;
@@ -1274,7 +1237,6 @@
                 }
             });
 
-            // CHANGE: Add focusout event listener to handle service input clearing
             comandaModal.addEventListener('focusout', (e) => {
                 if (e.target.classList.contains('item-service-search')) {
                     const itemEntry = e.target.closest('.item-entry');
@@ -1282,17 +1244,14 @@
                     const searchInput = e.target;
                     const resultsContainer = itemEntry.querySelector('.search-results');
 
-                    // Small delay to allow click on results to register before hiding
                     setTimeout(() => {
                         resultsContainer.classList.add('hidden');
-                        
-                        // If after the delay, no valid service is selected (ID is empty), clear the input and the price.
                         if (!serviceIdInput.value) {
                             searchInput.value = '';
-                            itemEntry.querySelector('.price-input').value = ''; // Clear price
-                            calculateComandaTotals(); // Recalculate
+                            itemEntry.querySelector('.price-input').value = '';
+                            calculateComandaTotals();
                         }
-                    }, 200); // 200ms delay to allow click to register
+                    }, 200);
                 }
             });
 
@@ -1382,7 +1341,6 @@
                     return;
                 }
                 
-                // --- VALIDATION BLOCK ---
                 let validationError = null;
 
                 const itemEntries = document.querySelectorAll('#items-list .item-entry');
@@ -1411,7 +1369,6 @@
                     showToast(validationError, true);
                     return;
                 }
-                // --- END VALIDATION BLOCK ---
 
                 let subtotal = 0;
                 document.querySelectorAll('#items-list .item-entry').forEach(item => {
@@ -2230,55 +2187,8 @@
                 XLSX.writeFile(wb, `reporte_${tipoReporte}_${fechaInicio}_${fechaFin}.xlsx`);
             });
 
-            retirarDineroBtn.addEventListener('click', async () => {
-                const today = new Date().toISOString().slice(0, 10);
-                const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("date", "==", today), where("type", "==", "retiro"));
-                const querySnapshot = await getDocs(q);
-                const retiros = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                if (retiros.length > 0) {
-                    retirosList.innerHTML = retiros.map(r => `<div class="flex justify-between items-center bg-gray-700 p-2 rounded-md"><span>$${r.amount.toLocaleString('es-AR')}</span><button class="delete-retiro-btn text-red-400 hover:text-red-600" data-id="${r.id}">Eliminar</button></div>`).join('');
-                } else {
-                    retirosList.innerHTML = '<p class="text-gray-500">No hay retiros registrados hoy.</p>';
-                }
-
-                openModal(retiroModal);
-            });
-
-            closeRetiroModalBtn.addEventListener('click', () => closeModal(retiroModal));
-
-            retiroForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const monto = parseFloat(retiroMontoInput.value);
-                if (isNaN(monto) || monto <= 0) { showToast('Ingrese un monto válido.', true); return; }
-                const now = new Date();
-                const newRetiro = { type: 'retiro', concept: 'Retiro de Caja', amount: monto, date: now.toISOString().slice(0, 10), time: now.toTimeString().slice(0, 5), createdAt: serverTimestamp() };
-                try {
-                    await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newRetiro);
-                    showToast('Retiro guardado correctamente.');
-                    retiroMontoInput.value = '';
-                    retirarDineroBtn.click();
-                } catch(error) {
-                    log(`Error al guardar retiro: ${error.message}`);
-                    showToast('No se pudo guardar el retiro.', true);
-                }
-            });
-
-            retirosList.addEventListener('click', async (e) => {
-                if (e.target.classList.contains('delete-retiro-btn')) {
-                    const retiroId = e.target.dataset.id;
-                    try {
-                        await deleteDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, retiroId));
-                        showToast('Retiro eliminado.');
-                        retirarDineroBtn.click();
-                    } catch (error) {
-                        log(`Error al eliminar retiro: ${error.message}`);
-                        showToast('No se pudo eliminar el retiro.', true);
-                    }
-                }
-            });
-
         });
     </script>
 </body>
 </html>
+
