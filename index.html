@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.15.0</title>
+    <title>Hugo Amadey Admin App v0.16.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -2628,15 +2628,20 @@
                     const prevEnd = new Date(start);
                     prevEnd.setDate(prevEnd.getDate() - 1);
                     const prevStart = new Date(prevEnd);
-                    prevStart.setDate(prevStart.getDate() - (diffDays - 1) );
-                    
+                    prevStart.setDate(prevStart.getDate() - (diffDays - 1));
+
                     const prevFechaInicio = prevStart.toISOString().slice(0, 10);
                     const prevFechaFin = prevEnd.toISOString().slice(0, 10);
 
                     const qActual = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
                     const qPrevio = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", prevFechaInicio), where("fecha", "<=", prevFechaFin));
+                    const qGastos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("type", "==", "gasto"), where("date", ">=", fechaInicio), where("date", "<=", fechaFin));
 
-                    const [actualSnapshot, previoSnapshot] = await Promise.all([getDocs(qActual), getDocs(qPrevio)]);
+                    const [actualSnapshot, previoSnapshot, gastosSnapshot] = await Promise.all([
+                        getDocs(qActual),
+                        getDocs(qPrevio),
+                        getDocs(qGastos)
+                    ]);
 
                     const facturacionPorDia = {};
                     actualSnapshot.forEach(doc => {
@@ -2645,7 +2650,7 @@
                         const totalComanda = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.monto || 0) + (pago.recargo || 0), 0);
                         facturacionPorDia[fecha] = (facturacionPorDia[fecha] || 0) + totalComanda;
                     });
-                    
+
                     const facturacionPorDiaPrevio = {};
                     previoSnapshot.forEach(doc => {
                         const comanda = doc.data();
@@ -2654,40 +2659,76 @@
                         facturacionPorDiaPrevio[fecha] = (facturacionPorDiaPrevio[fecha] || 0) + totalComanda;
                     });
                     
-                    const labels = Object.keys(facturacionPorDia).sort();
+                    const gastosPorDia = {};
+                    gastosSnapshot.forEach(doc => {
+                        const gasto = doc.data();
+                        const fecha = gasto.date;
+                        gastosPorDia[fecha] = (gastosPorDia[fecha] || 0) + gasto.amount;
+                    });
+                    
+                    const allDates = new Set([...Object.keys(facturacionPorDia), ...Object.keys(gastosPorDia)]);
+                    const labels = Array.from(allDates).sort();
+
                     if (labels.length === 0) {
-                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay datos de facturación para el período seleccionado.</p>`;
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay datos de facturación o gastos para el período seleccionado.</p>`;
                         return;
                     }
-                    
-                    const dataActual = labels.map(label => facturacionPorDia[label]);
-                    const dataPrevia = labels.map((label, index) => {
-                         const prevDate = new Date(label + 'T00:00:00');
-                         prevDate.setDate(prevDate.getDate() - diffDays);
-                         const prevDateString = prevDate.toISOString().slice(0, 10);
-                         return facturacionPorDiaPrevio[prevDateString] || 0;
+
+                    const dataFacturacion = labels.map(label => facturacionPorDia[label] || 0);
+                    const dataGastos = labels.map(label => gastosPorDia[label] || 0);
+                    const dataFacturacionPrevia = labels.map((label) => {
+                        const prevDate = new Date(label + 'T00:00:00');
+                        prevDate.setDate(prevDate.getDate() - diffDays);
+                        const prevDateString = prevDate.toISOString().slice(0, 10);
+                        return facturacionPorDiaPrevio[prevDateString] || 0;
                     });
 
+
                     if (finanzasChart) finanzasChart.dispose();
-                    
-                    chartView.innerHTML = ''; 
+
+                    chartView.innerHTML = '';
                     finanzasChart = echarts.init(chartView, 'dark');
 
                     const option = {
                         backgroundColor: '#1E1E1E',
-                        tooltip: { trigger: 'axis', formatter: (params) => {
-                            let tooltipText = `${params[0].name}<br/>`;
-                            params.forEach(param => {
-                                tooltipText += `${param.seriesName}: $${param.value.toLocaleString('es-AR')}<br/>`;
-                            });
-                            return tooltipText;
-                        }},
-                        legend: { data: ['Facturación Actual', 'Facturación Anterior'], textStyle: { color: '#fff' } },
+                        tooltip: {
+                            trigger: 'axis',
+                            formatter: (params) => {
+                                let tooltipText = `${params[0].name}<br/>`;
+                                params.forEach(param => {
+                                    tooltipText += `${param.marker} ${param.seriesName}: $${param.value.toLocaleString('es-AR')}<br/>`;
+                                });
+                                return tooltipText;
+                            }
+                        },
+                        legend: { data: ['Facturación', 'Gastos', 'Facturación Anterior'], textStyle: { color: '#fff' } },
                         xAxis: { type: 'category', data: labels, axisLabel: { color: '#fff' } },
                         yAxis: { type: 'value', axisLabel: { color: '#fff', formatter: '${value}' } },
                         series: [
-                            { name: 'Facturación Actual', type: 'line', smooth: true, data: dataActual, itemStyle: { color: '#3b82f6' }, label: { show: true, position: 'top', color: '#fff', formatter: '${c}' } },
-                            { name: 'Facturación Anterior', type: 'line', smooth: true, lineStyle: { type: 'dashed' }, data: dataPrevia, itemStyle: { color: '#9ca3af' }, label: { show: true, position: 'bottom', color: '#ccc', formatter: '${c}' } }
+                            {
+                                name: 'Facturación',
+                                type: 'line',
+                                smooth: true,
+                                data: dataFacturacion,
+                                itemStyle: { color: '#3b82f6' },
+                                label: { show: true, position: 'top', color: '#fff', formatter: '${c}' }
+                            },
+                            {
+                                name: 'Gastos',
+                                type: 'bar',
+                                data: dataGastos,
+                                itemStyle: { color: '#ef4444' },
+                                label: { show: true, position: 'top', color: '#fff', formatter: '${c}' }
+                            },
+                            {
+                                name: 'Facturación Anterior',
+                                type: 'line',
+                                smooth: true,
+                                lineStyle: { type: 'dashed' },
+                                data: dataFacturacionPrevia,
+                                itemStyle: { color: '#9ca3af' },
+                                label: { show: true, position: 'bottom', color: '#ccc', formatter: '${c}' }
+                            }
                         ]
                     };
                     finanzasChart.setOption(option);
@@ -2757,4 +2798,3 @@
     </script>
 </body>
 </html>
-
