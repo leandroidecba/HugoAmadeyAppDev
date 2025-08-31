@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.16.2</title>
+    <title>Hugo Amadey Admin App v0.17.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -216,6 +216,8 @@
                                 <optgroup label="Gráficos">
                                     <option value="graficoComandas">Comandas por día</option>
                                     <option value="graficoFacturacion">Facturación por día</option>
+                                    <option value="graficoGastoEvolucion">Evolución de Gasto por Mes</option>
+                                    <option value="graficoGastoComposicion">Composición de Gasto</option>
                                 </optgroup>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
@@ -640,6 +642,11 @@
                 toastEl.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
                 toastEl.classList.add('show');
                 setTimeout(() => { toastEl.classList.remove('show'); }, 3000);
+            }
+            function formatK(value) {
+                if (value >= 1000000) return (value / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                if (value >= 1000) return (value / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+                return value;
             }
             function scrollToBottom(element) {
                 setTimeout(() => {
@@ -2086,6 +2093,12 @@
                     case 'graficoFacturacion':
                         await generarGraficoFacturacionPorDia(fechaInicio, fechaFin);
                         break;
+                    case 'graficoGastoEvolucion':
+                        await generarGraficoGastoEvolucion(fechaInicio, fechaFin);
+                        break;
+                    case 'graficoGastoComposicion':
+                        await generarGraficoGastoComposicion(fechaInicio, fechaFin);
+                        break;
                     default:
                         showToast('Este reporte aún no está disponible.');
                         finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
@@ -2611,10 +2624,10 @@
                         tooltip: { trigger: 'axis' },
                         legend: { data: ['Período Actual', 'Período Anterior'], textStyle: { color: '#fff' } },
                         xAxis: { type: 'category', data: labels, axisLabel: { color: '#fff' } },
-                        yAxis: { type: 'value', axisLabel: { color: '#fff' } },
+                        yAxis: { type: 'value', axisLabel: { color: '#fff', formatter: formatK } },
                         series: [
-                            { name: 'Período Actual', type: 'line', smooth: true, data: dataActual, itemStyle: { color: '#3b82f6' }, label: { show: true, position: 'top', color: '#fff' } },
-                            { name: 'Período Anterior', type: 'line', smooth: true, lineStyle: { type: 'dashed' }, data: dataPrevia, itemStyle: { color: '#9ca3af' }, label: { show: true, position: 'bottom', color: '#ccc' } }
+                            { name: 'Período Actual', type: 'line', smooth: true, data: dataActual, itemStyle: { color: '#3b82f6' }, label: { show: true, position: 'top', color: '#fff', formatter: (params) => formatK(params.value) } },
+                            { name: 'Período Anterior', type: 'line', smooth: true, lineStyle: { type: 'dashed' }, data: dataPrevia, itemStyle: { color: '#9ca3af' }, label: { show: true, position: 'bottom', color: '#ccc', formatter: (params) => formatK(params.value) } }
                         ]
                     };
                     finanzasChart.setOption(option);
@@ -2709,7 +2722,7 @@
                         },
                         legend: { data: ['Facturación', 'Gastos', 'Facturación Anterior'], textStyle: { color: '#fff' } },
                         xAxis: { type: 'category', data: labels, axisLabel: { color: '#fff' } },
-                        yAxis: { type: 'value', axisLabel: { color: '#fff', formatter: '${value}' } },
+                        yAxis: { type: 'value', axisLabel: { color: '#fff', formatter: (value) => `$${formatK(value)}` } },
                         series: [
                             {
                                 name: 'Facturación',
@@ -2717,14 +2730,14 @@
                                 smooth: true,
                                 data: dataFacturacion,
                                 itemStyle: { color: '#3b82f6' },
-                                label: { show: true, position: 'top', color: '#fff', formatter: '${c}' }
+                                label: { show: true, position: 'top', color: '#fff', formatter: (params) => `$${formatK(params.value)}` }
                             },
                             {
                                 name: 'Gastos',
                                 type: 'bar',
                                 data: dataGastos,
                                 itemStyle: { color: '#ef4444' },
-                                label: { show: true, position: 'top', color: '#fff', formatter: '${c}' }
+                                label: { show: true, position: 'top', color: '#fff', formatter: (params) => `$${formatK(params.value)}` }
                             },
                             {
                                 name: 'Facturación Anterior',
@@ -2733,7 +2746,7 @@
                                 lineStyle: { type: 'dashed' },
                                 data: dataFacturacionPrevia,
                                 itemStyle: { color: '#9ca3af' },
-                                label: { show: true, position: 'bottom', color: '#ccc', formatter: '${c}' }
+                                label: { show: true, position: 'bottom', color: '#ccc', formatter: (params) => `$${formatK(params.value)}` }
                             }
                         ]
                     };
@@ -2742,6 +2755,160 @@
                 } catch (error) {
                     log(`Error al generar gráfico de facturación: ${error.message}`);
                     showToast('No se pudo generar el gráfico de facturación.', true);
+                }
+            }
+            
+            async function generarGraficoGastoEvolucion(fechaInicio, fechaFin) {
+                try {
+                    const qGastos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("type", "==", "gasto"), where("date", ">=", fechaInicio), where("date", "<=", fechaFin));
+                    const gastosSnapshot = await getDocs(qGastos);
+
+                    const gastosPorMes = {};
+                    const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+
+                    gastosSnapshot.forEach(doc => {
+                        const gasto = doc.data();
+                        const mes = gasto.date.substring(0, 7); // YYYY-MM
+
+                        if (!gastosPorMes[mes]) {
+                            gastosPorMes[mes] = { operativos: 0, administrativos: 0, sueldos: 0, sueldoHugo: 0 };
+                        }
+
+                        let categoriaAsignada = '';
+                        if (gasto.categoria && gasto.categoria.toLowerCase() === 'sueldos') {
+                            if (gasto.concept && gasto.concept.toLowerCase().includes('hugo')) {
+                                categoriaAsignada = 'sueldoHugo';
+                            } else {
+                                categoriaAsignada = 'sueldos';
+                            }
+                        } else if (categoriasOperativas.includes(gasto.categoria)) {
+                            categoriaAsignada = 'operativos';
+                        } else {
+                            categoriaAsignada = 'administrativos';
+                        }
+                        gastosPorMes[mes][categoriaAsignada] += gasto.amount || 0;
+                    });
+                    
+                    const meses = Object.keys(gastosPorMes).sort();
+                    if (meses.length === 0) {
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay gastos para el período seleccionado.</p>`;
+                        return;
+                    }
+
+                    const dataOperativos = meses.map(mes => gastosPorMes[mes].operativos);
+                    const dataAdministrativos = meses.map(mes => gastosPorMes[mes].administrativos);
+                    const dataSueldos = meses.map(mes => gastosPorMes[mes].sueldos);
+                    const dataSueldoHugo = meses.map(mes => gastosPorMes[mes].sueldoHugo);
+
+                    if (finanzasChart) finanzasChart.dispose();
+                    chartView.innerHTML = '';
+                    finanzasChart = echarts.init(chartView, 'dark');
+
+                    const option = {
+                        backgroundColor: '#1E1E1E',
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } } },
+                        legend: { data: ['Sueldo Hugo', 'Sueldos', 'Administrativos', 'Operativos'], textStyle: { color: '#fff' } },
+                        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                        xAxis: [{ type: 'category', boundaryGap: false, data: meses, axisLabel: { color: '#fff' } }],
+                        yAxis: [{ type: 'value', axisLabel: { color: '#fff', formatter: (value) => `$${formatK(value)}` } }],
+                        series: [
+                            { name: 'Operativos', type: 'line', stack: 'Total', areaStyle: {}, emphasis: { focus: 'series' }, data: dataOperativos, smooth: true },
+                            { name: 'Administrativos', type: 'line', stack: 'Total', areaStyle: {}, emphasis: { focus: 'series' }, data: dataAdministrativos, smooth: true },
+                            { name: 'Sueldos', type: 'line', stack: 'Total', areaStyle: {}, emphasis: { focus: 'series' }, data: dataSueldos, smooth: true },
+                            { name: 'Sueldo Hugo', type: 'line', stack: 'Total', areaStyle: {}, emphasis: { focus: 'series' }, data: dataSueldoHugo, smooth: true }
+                        ]
+                    };
+                    finanzasChart.setOption(option);
+
+                } catch (error) {
+                    log(`Error al generar gráfico de evolución de gastos: ${error.message}`);
+                    showToast('No se pudo generar el gráfico.', true);
+                }
+            }
+
+            async function generarGraficoGastoComposicion(fechaInicio, fechaFin) {
+                try {
+                    const qGastos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("type", "==", "gasto"), where("date", ">=", fechaInicio), where("date", "<=", fechaFin));
+                    const gastosSnapshot = await getDocs(qGastos);
+
+                    if (gastosSnapshot.empty) {
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay gastos para el período seleccionado.</p>`;
+                        return;
+                    }
+
+                    const totales = { operativos: 0, administrativos: 0, sueldos: 0, sueldoHugo: 0 };
+                    const categoriasOperativas = categoriasGastoCache.filter(c => c.visibleParaCajero).map(c => c.nombre);
+
+                    gastosSnapshot.forEach(doc => {
+                        const gasto = doc.data();
+                        let categoriaAsignada = '';
+                        if (gasto.categoria && gasto.categoria.toLowerCase() === 'sueldos') {
+                            if (gasto.concept && gasto.concept.toLowerCase().includes('hugo')) {
+                                categoriaAsignada = 'sueldoHugo';
+                            } else {
+                                categoriaAsignada = 'sueldos';
+                            }
+                        } else if (categoriasOperativas.includes(gasto.categoria)) {
+                            categoriaAsignada = 'operativos';
+                        } else {
+                            categoriaAsignada = 'administrativos';
+                        }
+                        totales[categoriaAsignada] += gasto.amount || 0;
+                    });
+                    
+                    const chartData = [
+                        { value: totales.operativos, name: 'Operativos' },
+                        { value: totales.administrativos, name: 'Administrativos' },
+                        { value: totales.sueldos, name: 'Sueldos' },
+                        { value: totales.sueldoHugo, name: 'Sueldo Hugo' }
+                    ].filter(item => item.value > 0);
+                    
+                    if (chartData.length === 0) {
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay gastos para el período seleccionado.</p>`;
+                        return;
+                    }
+
+                    if (finanzasChart) finanzasChart.dispose();
+                    chartView.innerHTML = '';
+                    finanzasChart = echarts.init(chartView, 'dark');
+
+                    const option = {
+                        backgroundColor: '#1E1E1E',
+                        tooltip: {
+                            trigger: 'item',
+                            formatter: params => `${params.name}: $${params.value.toLocaleString('es-AR')} (${params.percent}%)`
+                        },
+                        legend: {
+                            orient: 'vertical',
+                            left: 'left',
+                            textStyle: { color: '#fff' }
+                        },
+                        series: [{
+                            name: 'Composición de Gasto',
+                            type: 'pie',
+                            radius: '50%',
+                            data: chartData,
+                            emphasis: {
+                                itemStyle: {
+                                    shadowBlur: 10,
+                                    shadowOffsetX: 0,
+                                    shadowColor: 'rgba(0, 0, 0, 0.5)'
+                                }
+                            },
+                            label: {
+                                color: '#fff',
+                                formatter: params => `${params.name}\n${params.percent}% ($${formatK(params.value)})`,
+                                position: 'outside'
+                            },
+                            labelLine: {
+                                show: true
+                            }
+                        }]
+                    };
+                    finanzasChart.setOption(option);
+                } catch (error) {
+                    log(`Error al generar gráfico de composición de gastos: ${error.message}`);
+                    showToast('No se pudo generar el gráfico.', true);
                 }
             }
 
@@ -2804,4 +2971,3 @@
     </script>
 </body>
 </html>
-
