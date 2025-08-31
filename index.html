@@ -215,6 +215,7 @@
                                 </optgroup>
                                 <optgroup label="Gráficos">
                                     <option value="graficoComandas">Comandas por día</option>
+                                    <option value="graficoFacturacion">Facturación por día</option>
                                 </optgroup>
                             </select>
                             <button id="generar-reporte-finanzas-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Generar Reporte</button>
@@ -2076,6 +2077,9 @@
                     case 'graficoComandas':
                         await generarGraficoComandasPorDia(fechaInicio, fechaFin);
                         break;
+                    case 'graficoFacturacion':
+                        await generarGraficoFacturacionPorDia(fechaInicio, fechaFin);
+                        break;
                     default:
                         showToast('Este reporte aún no está disponible.');
                         finanzasTableBody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-500">Reporte no disponible.</td></tr>`;
@@ -2577,6 +2581,11 @@
                     });
                     
                     const labels = Object.keys(comandasPorDia).sort();
+                    if (labels.length === 0) {
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay comandas para el período seleccionado.</p>`;
+                        return;
+                    }
+
                     const dataActual = labels.map(label => comandasPorDia[label]);
                     const dataPrevia = labels.map((label, index) => {
                          const prevDate = new Date(label + 'T00:00:00');
@@ -2605,8 +2614,87 @@
                     finanzasChart.setOption(option);
 
                 } catch (error) {
-                    log(`Error al generar gráfico: ${error.message}`);
-                    showToast('No se pudo generar el gráfico.', true);
+                    log(`Error al generar gráfico de comandas: ${error.message}`);
+                    showToast('No se pudo generar el gráfico de comandas.', true);
+                }
+            }
+
+            async function generarGraficoFacturacionPorDia(fechaInicio, fechaFin) {
+                try {
+                    const start = new Date(fechaInicio + 'T00:00:00');
+                    const end = new Date(fechaFin + 'T00:00:00');
+                    const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+                    const prevEnd = new Date(start);
+                    prevEnd.setDate(prevEnd.getDate() - 1);
+                    const prevStart = new Date(prevEnd);
+                    prevStart.setDate(prevStart.getDate() - (diffDays - 1) );
+                    
+                    const prevFechaInicio = prevStart.toISOString().slice(0, 10);
+                    const prevFechaFin = prevEnd.toISOString().slice(0, 10);
+
+                    const qActual = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const qPrevio = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", prevFechaInicio), where("fecha", "<=", prevFechaFin));
+
+                    const [actualSnapshot, previoSnapshot] = await Promise.all([getDocs(qActual), getDocs(qPrevio)]);
+
+                    const facturacionPorDia = {};
+                    actualSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        const fecha = comanda.fecha;
+                        const totalComanda = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.monto || 0) + (pago.recargo || 0), 0);
+                        facturacionPorDia[fecha] = (facturacionPorDia[fecha] || 0) + totalComanda;
+                    });
+                    
+                    const facturacionPorDiaPrevio = {};
+                    previoSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        const fecha = comanda.fecha;
+                        const totalComanda = (comanda.pagos || []).reduce((sum, pago) => sum + (pago.monto || 0) + (pago.recargo || 0), 0);
+                        facturacionPorDiaPrevio[fecha] = (facturacionPorDiaPrevio[fecha] || 0) + totalComanda;
+                    });
+                    
+                    const labels = Object.keys(facturacionPorDia).sort();
+                    if (labels.length === 0) {
+                        chartView.innerHTML = `<p class="text-center text-gray-400 p-4">No hay datos de facturación para el período seleccionado.</p>`;
+                        return;
+                    }
+                    
+                    const dataActual = labels.map(label => facturacionPorDia[label]);
+                    const dataPrevia = labels.map((label, index) => {
+                         const prevDate = new Date(label + 'T00:00:00');
+                         prevDate.setDate(prevDate.getDate() - diffDays);
+                         const prevDateString = prevDate.toISOString().slice(0, 10);
+                         return facturacionPorDiaPrevio[prevDateString] || 0;
+                    });
+
+                    if (finanzasChart) finanzasChart.dispose();
+                    
+                    chartView.innerHTML = ''; 
+                    finanzasChart = echarts.init(chartView, 'dark');
+
+                    const option = {
+                        backgroundColor: '#1E1E1E',
+                        tooltip: { trigger: 'axis', formatter: (params) => {
+                            let tooltipText = `${params[0].name}<br/>`;
+                            params.forEach(param => {
+                                tooltipText += `${param.seriesName}: $${param.value.toLocaleString('es-AR')}<br/>`;
+                            });
+                            return tooltipText;
+                        }},
+                        legend: { data: ['Facturación Actual', 'Facturación Anterior'], textStyle: { color: '#fff' } },
+                        xAxis: { type: 'category', data: labels, axisLabel: { color: '#fff' } },
+                        yAxis: { type: 'value', axisLabel: { color: '#fff', formatter: '${value}' } },
+                        series: [
+                            { name: 'Facturación Actual', type: 'line', smooth: true, data: dataActual, itemStyle: { color: '#3b82f6' }, label: { show: true, position: 'top', color: '#fff', formatter: '${c}' } },
+                            { name: 'Facturación Anterior', type: 'line', smooth: true, lineStyle: { type: 'dashed' }, data: dataPrevia, itemStyle: { color: '#9ca3af' }, label: { show: true, position: 'bottom', color: '#ccc', formatter: '${c}' } }
+                        ]
+                    };
+                    finanzasChart.setOption(option);
+
+                } catch (error) {
+                    log(`Error al generar gráfico de facturación: ${error.message}`);
+                    showToast('No se pudo generar el gráfico de facturación.', true);
                 }
             }
 
