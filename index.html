@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.16.1</title>
+    <title>Hugo Amadey Admin App v0.16.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -615,7 +615,7 @@
             let aperturaCajaDocId = null;
             let currentDate = new Date();
             let datesWithRecords = new Set();
-            let currentlyViewedDate = new Date().toISOString().slice(0, 10);
+            let currentlyViewedDate = getLocalDateAsString();
             let currentEditingPreset = { type: null, id: null };
             let currentUserRole = null;
             let selectedRoleForLogin = null;
@@ -623,6 +623,12 @@
             let finanzasChart = null;
             
             // --- FUNCIONES DE UTILIDAD ---
+            function getLocalDateAsString(date = new Date()) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
             function log(message) {
                 console.log(message);
             }
@@ -855,7 +861,7 @@
                     document.getElementById('date-selector-btn').classList.add('hidden');
                     document.getElementById('admin-gastos-section').classList.add('hidden');
                     document.getElementById('summary-admin-gastos-row').classList.add('hidden');
-                    const today = new Date().toISOString().slice(0, 10);
+                    const today = getLocalDateAsString();
                     fetchDetailsForDate(today);
                     document.getElementById('ajustes-content').innerHTML = '<p class="p-6 text-center text-gray-500">No tienes permisos para ver esta sección.</p>';
                 }
@@ -882,7 +888,7 @@
             tabDashboardBtn.addEventListener('click', () => switchTab('dashboard'));
             tabReportesBtn.addEventListener('click', () => {
                 switchTab('reportes');
-                const todayString = new Date().toISOString().slice(0, 10);
+                const todayString = getLocalDateAsString();
                 currentlyViewedDate = todayString;
                 updateDateSelectorButton(todayString);
                 fetchDetailsForDate(todayString);
@@ -934,7 +940,7 @@
             }
             
             function listenToDailyData() {
-                const today = new Date().toISOString().slice(0, 10);
+                const today = getLocalDateAsString();
                 const qComandas = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", "==", today));
                 const qMovimientos = query(collection(db, `artifacts/${appId}/public/data/movimientos`), where("date", "==", today));
                 onSnapshot(qComandas, (snapshot) => {
@@ -1020,7 +1026,7 @@
                         if (doc.data().fecha) datesWithRecords.add(doc.data().fecha);
                     });
                     renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
-                    const todayString = new Date().toISOString().slice(0, 10);
+                    const todayString = getLocalDateAsString();
                     currentlyViewedDate = todayString;
                     updateDateSelectorButton(todayString);
                     fetchDetailsForDate(todayString);
@@ -1246,7 +1252,7 @@
                             paymentMethod: medioPago, 
                             amount: monto, 
                             deCaja: esDeCaja,
-                            date: now.toISOString().slice(0, 10), 
+                            date: getLocalDateAsString(now), 
                             time: now.toTimeString().slice(0, 5), 
                             createdAt: serverTimestamp() 
                         };
@@ -1616,7 +1622,7 @@
 
                     } else {
                         const now = new Date();
-                        comandaData.fecha = now.toISOString().slice(0, 10);
+                        comandaData.fecha = getLocalDateAsString(now);
                         comandaData.hora = now.toTimeString().slice(0, 5);
                         comandaData.createdAt = serverTimestamp();
                         
@@ -1638,7 +1644,7 @@
                 const monto = parseFloat(cajaInicialInput.value);
                 if(isNaN(monto) || monto < 0) { showToast("Ingresa un monto válido.", true); return; }
                 const now = new Date();
-                const newApertura = { type: 'apertura', concept: 'Apertura de Caja', amount: monto, date: now.toISOString().slice(0, 10), time: now.toTimeString().slice(0, 5), createdAt: serverTimestamp() };
+                const newApertura = { type: 'apertura', concept: 'Apertura de Caja', amount: monto, date: getLocalDateAsString(now), time: now.toTimeString().slice(0, 5), createdAt: serverTimestamp() };
                 try {
                     if(aperturaCajaDocId) await updateDoc(doc(db, `artifacts/${appId}/public/data/movimientos`, aperturaCajaDocId), { amount: monto });
                     else await addDoc(collection(db, `artifacts/${appId}/public/data/movimientos`), newApertura);
@@ -2798,3 +2804,4 @@
     </script>
 </body>
 </html>
+
