@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.17.0</title>
+    <title>Hugo Amadey Admin App v0.18.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -212,6 +212,7 @@
                                     <option value="gastos">Gastos</option>
                                     <option value="pagos">Pagos</option>
                                     <option value="resumenFinanciero">Resumen Financiero</option>
+                                    <option value="comisionesPorProfesional">Comisiones por Profesional</option>
                                 </optgroup>
                                 <optgroup label="Gráficos">
                                     <option value="graficoComandas">Comandas por día</option>
@@ -2087,6 +2088,9 @@
                     case 'resumenFinanciero':
                         await generarReporteResumenFinanciero(fechaInicio, fechaFin);
                         break;
+                    case 'comisionesPorProfesional':
+                        await generarReporteComisionesPorProfesional(fechaInicio, fechaFin);
+                        break;
                     case 'graficoComandas':
                         await generarGraficoComandasPorDia(fechaInicio, fechaFin);
                         break;
@@ -2567,6 +2571,84 @@
                     finanzasTableBody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
+
+            async function generarReporteComisionesPorProfesional(fechaInicio, fechaFin) {
+                try {
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Profesional</th>
+                        <th class="p-2 text-right">Total Comisiones</th>
+                    </tr>`;
+                    finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">Generando reporte...</td></tr>`;
+                    finanzasTableFoot.innerHTML = '';
+
+                    const q = query(collection(db, `artifacts/${appId}/public/data/comandas`), where("fecha", ">=", fechaInicio), where("fecha", "<=", fechaFin));
+                    const comandasSnapshot = await getDocs(q);
+
+                    if (comandasSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">No se encontraron datos.</td></tr>`;
+                        return;
+                    }
+                    
+                    const comisionesPorProfesional = {};
+
+                    comandasSnapshot.forEach(doc => {
+                        const comanda = doc.data();
+                        (comanda.items || []).forEach(item => {
+                            if (item.profesionalId) {
+                                const profesional = profesionalesCache.find(p => p.id === item.profesionalId);
+                                if (!profesional) return;
+
+                                let categoriaComision;
+                                if (item.type === 'servicio') {
+                                    const servicio = serviciosCache.find(s => s.id === item.servicioId);
+                                    categoriaComision = item.isVoucher ? 'V' : servicio?.categoria;
+                                } else if (item.type === 'producto') {
+                                    categoriaComision = 'P';
+                                }
+
+                                if (categoriaComision) {
+                                    const porcentaje = profesional.comisiones?.[categoriaComision] || 0;
+                                    const comision = (item.precio || 0) * (porcentaje / 100);
+
+                                    if (!comisionesPorProfesional[profesional.id]) {
+                                        comisionesPorProfesional[profesional.id] = {
+                                            nombre: profesional.nombre,
+                                            total: 0
+                                        };
+                                    }
+                                    comisionesPorProfesional[profesional.id].total += comision;
+                                }
+                            }
+                        });
+                    });
+
+                    const reportData = Object.values(comisionesPorProfesional).sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+                    if (reportData.length === 0) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">No se encontraron comisiones en el período.</td></tr>`;
+                        return;
+                    }
+
+                    let totalGeneral = 0;
+                    finanzasTableBody.innerHTML = reportData.map(row => {
+                        totalGeneral += row.total;
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${row.nombre}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold text-green-400">$${row.total.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td class="p-2 font-bold">TOTAL GENERAL</td>
+                        <td class="p-2 text-right font-bold text-green-400">$${totalGeneral.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte de comisiones por profesional: ${error.message}`);
+                    showToast('No se pudo generar el reporte.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
             
             async function generarGraficoComandasPorDia(fechaInicio, fechaFin) {
                 try {
@@ -2952,7 +3034,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero'].includes(tipoReporte)) {
+                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero', 'comisionesPorProfesional'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -2971,3 +3053,4 @@
     </script>
 </body>
 </html>
+
