@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firestore Database Backup</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="app-container" class="w-full bg-white shadow-xl rounded-lg p-8 space-y-6">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">Firestore Recursive Backup</h1>
+            <p class="mt-2 text-gray-600">
+                Enter the names of the top-level collections you want to back up. The app will then recursively back up all documents and their subcollections.
+            </p>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label for="collection-input" class="block text-sm font-medium text-gray-700">Top-Level Collection Names:</label>
+                <input
+                    type="text"
+                    id="collection-input"
+                    placeholder="e.g., users, products, orders"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3 border"
+                >
+            </div>
+
+            <button
+                id="backup-button"
+                class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:bg-indigo-400"
+            >
+                <i id="spinner" class="fas fa-spinner animate-spin mr-2 hidden"></i>
+                <span id="button-text">Start Full Backup</span>
+            </button>
+
+            <div id="status-message" class="mt-4 text-center text-sm font-medium text-gray-500"></div>
+
+            <div id="download-container" class="mt-4 hidden">
+                <a id="download-link" href="#" class="block w-full text-center py-3 px-4 border-2 border-green-600 text-green-600 rounded-md font-medium hover:bg-green-100 transition-colors">
+                    <i class="fas fa-download mr-2"></i>Download Backup File
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the Canvas environment.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const collectionInput = document.getElementById('collection-input');
+        const backupButton = document.getElementById('backup-button');
+        const statusMessage = document.getElementById('status-message');
+        const downloadContainer = document.getElementById('download-container');
+        const downloadLink = document.getElementById('download-link');
+        const spinner = document.getElementById('spinner');
+        const buttonText = document.getElementById('button-text');
+
+        let db;
+        let auth;
+        let userId;
+        let currentStatus = '';
+
+        /**
+         * Initializes Firebase and authenticates the user.
+         * Sets up the database and authentication objects.
+         */
+        async function initializeFirebase() {
+            if (!firebaseConfig) {
+                statusMessage.textContent = 'Error: Firebase configuration is missing. Please provide a valid configuration.';
+                return;
+            }
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                userId = auth.currentUser?.uid || 'anonymous';
+                statusMessage.textContent = 'Firebase connected. Ready to back up.';
+                backupButton.disabled = false;
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                statusMessage.textContent = `Error initializing Firebase: ${error.message}`;
+            }
+        }
+
+        /**
+         * Recursively fetches a collection and all of its subcollections.
+         * @param {string} collectionPath The path of the collection to start from.
+         * @returns {Promise<Object>} A promise that resolves with the collection's data.
+         */
+        async function fetchCollectionRecursively(collectionPath) {
+            const collectionData = {};
+            const q = collection(db, collectionPath);
+            const querySnapshot = await getDocs(q);
+
+            for (const docSnapshot of querySnapshot.docs) {
+                const docId = docSnapshot.id;
+                const docData = docSnapshot.data();
+
+                // Recursively fetch subcollections for each document
+                const subcollections = await getDocs(collection(docSnapshot.ref.path));
+                const subcollectionData = {};
+                for (const sub of subcollections.docs) {
+                     // This part is the key: we get the subcollection path and fetch its contents recursively.
+                    const subcollectionName = sub.ref.path.split('/').slice(-2)[0];
+                    statusMessage.textContent = `Fetching subcollection: ${sub.ref.path}...`;
+                    subcollectionData[subcollectionName] = await fetchCollectionRecursively(sub.ref.path);
+                }
+
+                // Merge subcollection data into the document data
+                collectionData[docId] = { ...docData, ...subcollectionData };
+            }
+
+            return collectionData;
+        }
+
+        /**
+         * Backs up the specified Firestore collections recursively.
+         */
+        async function backupDatabase() {
+            const collectionNames = collectionInput.value.split(',').map(name => name.trim()).filter(name => name.length > 0);
+            if (collectionNames.length === 0) {
+                statusMessage.textContent = 'Please enter at least one top-level collection name.';
+                return;
+            }
+
+            backupButton.disabled = true;
+            spinner.classList.remove('hidden');
+            buttonText.textContent = 'Backing Up...';
+            statusMessage.textContent = 'Starting full database backup...';
+            downloadContainer.classList.add('hidden');
+
+            const backupData = {};
+
+            try {
+                for (const name of collectionNames) {
+                    currentStatus = `Fetching collection: ${name}...`;
+                    statusMessage.textContent = currentStatus;
+                    const collectionData = await fetchCollectionRecursively(name);
+                    backupData[name] = collectionData;
+                }
+
+                // Convert data to a JSON string
+                const jsonString = JSON.stringify(backupData, null, 2);
+
+                // Create a Blob and download link
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const today = new Date().toISOString().slice(0, 10);
+                
+                downloadLink.href = url;
+                downloadLink.download = `firestore_full_backup_${today}.json`;
+                
+                downloadContainer.classList.remove('hidden');
+                statusMessage.textContent = 'Full backup completed successfully!';
+
+            } catch (error) {
+                console.error("Backup failed:", error);
+                statusMessage.textContent = `Backup failed: ${error.message}`;
+            } finally {
+                backupButton.disabled = false;
+                spinner.classList.add('hidden');
+                buttonText.textContent = 'Start Full Backup';
+            }
+        }
+
+        // Attach event listener
+        backupButton.addEventListener('click', backupDatabase);
+
+        // Initialize on page load
+        window.onload = initializeFirebase;
+    </script>
+</body>
+</html>
