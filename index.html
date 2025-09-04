@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hugo Amadey Admin App v0.18.0</title>
+    <title>Hugo Amadey Admin App v0.18.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- PWA Meta Tags -->
@@ -213,6 +213,7 @@
                                     <option value="pagos">Pagos</option>
                                     <option value="resumenFinanciero">Resumen Financiero</option>
                                     <option value="comisionesPorProfesional">Comisiones por Profesional</option>
+                                    <option value="resumenGastosDescripcion">Resumen de Gastos por Descripción</option>
                                 </optgroup>
                                 <optgroup label="Gráficos">
                                     <option value="graficoComandas">Comandas por día</option>
@@ -2091,6 +2092,9 @@
                     case 'comisionesPorProfesional':
                         await generarReporteComisionesPorProfesional(fechaInicio, fechaFin);
                         break;
+                    case 'resumenGastosDescripcion':
+                        await generarReporteResumenGastosDescripcion(fechaInicio, fechaFin);
+                        break;
                     case 'graficoComandas':
                         await generarGraficoComandasPorDia(fechaInicio, fechaFin);
                         break;
@@ -2494,6 +2498,63 @@
                     log(`Error generando reporte de gastos: ${error.message}`);
                     showToast('No se pudo generar el reporte de gastos.', true);
                     finanzasTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
+                }
+            }
+            
+            async function generarReporteResumenGastosDescripcion(fechaInicio, fechaFin) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/public/data/movimientos`), 
+                        where("type", "==", "gasto"),
+                        where("date", ">=", fechaInicio), 
+                        where("date", "<=", fechaFin)
+                    );
+                    const gastosSnapshot = await getDocs(q);
+
+                    finanzasTableHead.innerHTML = `<tr>
+                        <th class="p-2">Descripción</th>
+                        <th class="p-2 text-right">Total</th>
+                    </tr>`;
+
+                    if (gastosSnapshot.empty) {
+                        finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">No se encontraron gastos en el período.</td></tr>`;
+                        finanzasTableFoot.innerHTML = '';
+                        return;
+                    }
+
+                    const gastosAgrupados = {};
+                    gastosSnapshot.forEach(doc => {
+                        const gasto = doc.data();
+                        const concepto = gasto.concept.trim();
+                        if (!gastosAgrupados[concepto]) {
+                            gastosAgrupados[concepto] = 0;
+                        }
+                        gastosAgrupados[concepto] += gasto.amount || 0;
+                    });
+                    
+                    const reportData = Object.entries(gastosAgrupados).map(([descripcion, total]) => ({
+                        descripcion,
+                        total
+                    })).sort((a, b) => b.total - a.total);
+
+
+                    let totalGeneral = 0;
+                    finanzasTableBody.innerHTML = reportData.map(row => {
+                        totalGeneral += row.total;
+                        return `<tr>
+                            <td class="p-2 border-t border-gray-700">${row.descripcion}</td>
+                            <td class="p-2 border-t border-gray-700 text-right font-semibold text-red-400">$${row.total.toLocaleString('es-AR')}</td>
+                        </tr>`;
+                    }).join('');
+
+                    finanzasTableFoot.innerHTML = `<tr>
+                        <td class="p-2 font-bold">TOTAL GENERAL</td>
+                        <td class="p-2 text-right font-bold text-red-400">$${totalGeneral.toLocaleString('es-AR')}</td>
+                    </tr>`;
+
+                } catch (error) {
+                    log(`Error generando reporte de resumen de gastos: ${error.message}`);
+                    showToast('No se pudo generar el reporte.', true);
+                    finanzasTableBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-red-400">Error al cargar datos.</td></tr>`;
                 }
             }
 
@@ -3034,7 +3095,7 @@
                 const select = document.getElementById('finanzas-reporte-select');
                 const tipoReporte = select.value;
                 const reportName = select.options[select.selectedIndex].text;
-                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero', 'comisionesPorProfesional'].includes(tipoReporte)) {
+                if (!['comandas', 'detalleComandas', 'ventas', 'gastos', 'pagos', 'resumenFinanciero', 'comisionesPorProfesional', 'resumenGastosDescripcion'].includes(tipoReporte)) {
                     showToast('Función de exportar no disponible para este reporte aún.');
                     return;
                 }
@@ -3053,4 +3114,3 @@
     </script>
 </body>
 </html>
-
